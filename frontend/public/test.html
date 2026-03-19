@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API接続テスト</h1>
+    <div id="result"></div>
+    
+    <script>
+        const resultDiv = document.getElementById('result');
+        
+        // API接続テスト
+        fetch('http://localhost:8080/api/sites/')
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.innerHTML = '<p style="color: green;">✅ API接続成功!</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            })
+            .catch(error => {
+                resultDiv.innerHTML = '<p style="color: red;">❌ API接続失敗: ' + error.message + '</p>';
+                console.error('Error:', error);
+            });
+    </script>
+</body>
+</html>

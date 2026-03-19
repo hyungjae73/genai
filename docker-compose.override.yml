@@ -1,0 +1,53 @@
+# Development overrides — automatically loaded by `docker compose up`
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-15432}:5432"  # Avoid conflict with local homebrew PostgreSQL
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-16379}:6379"  # Avoid conflict with local homebrew Redis
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - RUN_MIGRATIONS=true
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./alembic:/app/alembic
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      - RUN_MIGRATIONS=false
+    volumes:
+      - ./src:/app/src
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      - RUN_MIGRATIONS=false
+    volumes:
+      - ./src:/app/src
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    ports:
+      - "5173:5173"

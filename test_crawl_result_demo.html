@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クロール結果モーダル - デモ</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .demo-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        h2 {
+            color: #666;
+            font-size: 18px;
+            margin-top: 0;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #2563eb;
+        }
+        .info {
+            padding: 12px;
+            background-color: #dbeafe;
+            border-radius: 6px;
+            margin-top: 10px;
+            color: #1e40af;
+        }
+        pre {
+            background-color: #f3f4f6;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>クロール結果モーダル - デモ</h1>
+    
+    <div class="demo-section">
+        <h2>デモシナリオ</h2>
+        <p>以下のボタンをクリックして、異なるクロール結果のシナリオを確認できます:</p>
+        
+        <button onclick="showSuccessNoViolations()">✓ 成功 - 違反なし</button>
+        <button onclick="showSuccessWithViolations()">⚠ 成功 - 違反あり</button>
+        <button onclick="showCrawlFailed()">✗ クロール失敗</button>
+        <button onclick="showError()">✗ エラー</button>
+        
+        <div class="info">
+            <strong>注意:</strong> これはデモ用のHTMLファイルです。実際のReactコンポーネントは
+            <code>genai/frontend/src/components/hierarchy/CrawlResultModal.tsx</code>
+            にあります。
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>実装されたクロール結果データ構造</h2>
+        <pre id="data-structure"></pre>
+    </div>
+
+    <div class="demo-section">
+        <h2>機能一覧</h2>
+        <ul>
+            <li>✓ クロールステータスの表示（成功/失敗/エラー）</li>
+            <li>✓ URLの表示</li>
+            <li>✓ 違反情報の詳細表示</li>
+            <li>✓ 重要度別の色分け表示（低/中/高/重大）</li>
+            <li>✓ 違反タイプとフィールド名の表示</li>
+            <li>✓ 違反メッセージの表示</li>
+            <li>✓ アラート送信状態の表示</li>
+            <li>✓ エラーメッセージの表示</li>
+            <li>✓ モーダルの開閉機能</li>
+            <li>✓ レスポンシブデザイン</li>
+        </ul>
+    </div>
+
+    <div class="demo-section">
+        <h2>テスト結果</h2>
+        <pre>✓ src/components/hierarchy/CrawlResultModal.test.tsx (10 tests) 178ms
+  ✓ CrawlResultModal (10)
+    ✓ displays loading state initially
+    ✓ displays error when crawl status fetch fails
+    ✓ displays error when crawl failed
+    ✓ displays success message when no violations detected
+    ✓ displays violations when detected
+    ✓ displays error message from result
+    ✓ closes modal when close button is clicked
+    ✓ closes modal when footer close button is clicked
+    ✓ closes modal when overlay is clicked
+    ✓ displays severity badges correctly
+
+Test Files  15 passed (15)
+     Tests  157 passed (157)</pre>
+    </div>
+
+    <div class="demo-section">
+        <h2>使用方法</h2>
+        <ol>
+            <li>階層ビュー（HierarchyView）でサイト一覧を表示</li>
+            <li>サイト行の「今すぐクロール」ボタンをクリック</li>
+            <li>クロールが完了すると自動的に結果モーダルが表示される</li>
+            <li>または「結果を表示」ボタンをクリックして手動で表示</li>
+            <li>モーダルで違反情報を確認</li>
+            <li>×ボタン、閉じるボタン、またはオーバーレイをクリックして閉じる</li>
+        </ol>
+    </div>
+
+    <script>
+        // Sample data structures
+        const successNoViolations = {
+            job_id: "test-job-123",
+            status: "completed",
+            result: {
+                site_id: 1,
+                url: "https://example.com/product",
+                status: "success",
+                violations: [],
+                alerts_sent: false,
+                error: null
+            }
+        };
+
+        const successWithViolations = {
+            job_id: "test-job-456",
+            status: "completed",
+            result: {
+                site_id: 1,
+                url: "https://example.com/product",
+                status: "success",
+                violations: [
+                    {
+                        type: "price_mismatch",
+                        severity: "high",
+                        field: "price",
+                        message: "価格が契約条件と一致しません。期待値: ¥10,000、実際の値: ¥12,000"
+                    },
+                    {
+                        type: "payment_method_missing",
+                        severity: "medium",
+                        field: "payment_methods",
+                        message: "必須の支払い方法「クレジットカード」が見つかりません"
+                    },
+                    {
+                        type: "fee_violation",
+                        severity: "critical",
+                        field: "fees",
+                        message: "手数料が契約条件を超えています。最大: 5%、実際: 8%"
+                    },
+                    {
+                        type: "subscription_term_violation",
+                        severity: "low",
+                        field: "subscription_terms",
+                        message: "解約ポリシーの記載が不明確です"
+                    }
+                ],
+                alerts_sent: true,
+                error: null
+            }
+        };
+
+        const crawlFailed = {
+            job_id: "test-job-789",
+            status: "completed",
+            result: {
+                site_id: 1,
+                url: "https://example.com/product",
+                status: "crawl_failed",
+                violations: [],
+                alerts_sent: false,
+                error: "Failed to crawl site"
+            }
+        };
+
+        const errorResult = {
+            job_id: "test-job-999",
+            status: "completed",
+            result: {
+                site_id: 1,
+                url: "https://example.com/product",
+                status: "error",
+                violations: [],
+                alerts_sent: false,
+                error: "Connection timeout after 30 seconds"
+            }
+        };
+
+        function showSuccessNoViolations() {
+            displayData(successNoViolations);
+            alert('✓ 成功 - 違反なし\n\nこのシナリオでは、クロールが成功し、違反は検出されませんでした。\nモーダルには「違反は検出されませんでした」というメッセージが表示されます。');
+        }
+
+        function showSuccessWithViolations() {
+            displayData(successWithViolations);
+            alert('⚠ 成功 - 違反あり\n\nこのシナリオでは、クロールが成功し、4件の違反が検出されました:\n\n1. 価格不一致（高）\n2. 支払い方法不足（中）\n3. 手数料違反（重大）\n4. サブスクリプション条件違反（低）\n\nアラートも送信されました。');
+        }
+
+        function showCrawlFailed() {
+            displayData(crawlFailed);
+            alert('✗ クロール失敗\n\nこのシナリオでは、クロール自体が失敗しました。\nサイトにアクセスできなかった、またはPlaywrightブラウザが利用できなかった可能性があります。');
+        }
+
+        function showError() {
+            displayData(errorResult);
+            alert('✗ エラー\n\nこのシナリオでは、クロール中にエラーが発生しました。\nタイムアウト、ネットワークエラー、または予期しない例外が原因です。');
+        }
+
+        function displayData(data) {
+            document.getElementById('data-structure').textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Display default data on load
+        displayData(successWithViolations);
+    </script>
+</body>
+</html>

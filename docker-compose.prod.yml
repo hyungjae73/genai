@@ -1,0 +1,54 @@
+# Production overrides — use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+services:
+  postgres:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY}/api:${IMAGE_TAG:-latest}
+    environment:
+      - RUN_MIGRATIONS=true
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  celery-worker:
+    image: ghcr.io/${GITHUB_REPOSITORY}/api:${IMAGE_TAG:-latest}
+    environment:
+      - RUN_MIGRATIONS=false
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  celery-beat:
+    image: ghcr.io/${GITHUB_REPOSITORY}/api:${IMAGE_TAG:-latest}
+    environment:
+      - RUN_MIGRATIONS=false
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "80:80"
+    restart: unless-stopped

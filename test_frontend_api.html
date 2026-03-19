@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #3B82F6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #2563EB;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>フロントエンド → API データ取得テスト</h1>
+    
+    <div class="test-section">
+        <h3>1. カテゴリAPI (Categories)</h3>
+        <button onclick="testCategories()">カテゴリ一覧を取得</button>
+        <div id="categories-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. フィールドスキーマAPI (Field Schemas)</h3>
+        <button onclick="testFieldSchemas()">フィールドスキーマ取得 (カテゴリID: 1)</button>
+        <div id="field-schemas-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. サイトAPI (Sites)</h3>
+        <button onclick="testSites()">サイト一覧を取得</button>
+        <div id="sites-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. 顧客API (Customers)</h3>
+        <button onclick="testCustomers()">顧客一覧を取得</button>
+        <div id="customers-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>5. 階層型ビューデータ (統合テスト)</h3>
+        <button onclick="testHierarchyData()">階層型ビュー用データを取得</button>
+        <div id="hierarchy-result" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+
+        async function testCategories() {
+            const resultDiv = document.getElementById('categories-result');
+            try {
+                const response = await fetch(`${API_BASE}/api/categories/`);
+                const data = await response.json();
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ 成功 (${data.length}件)\n\n` + JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ エラー: ${error.message}`;
+            }
+        }
+
+        async function testFieldSchemas() {
+            const resultDiv = document.getElementById('field-schemas-result');
+            try {
+                const response = await fetch(`${API_BASE}/api/field-schemas/category/1`);
+                const data = await response.json();
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ 成功 (${data.length}件)\n\n` + JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ エラー: ${error.message}`;
+            }
+        }
+
+        async function testSites() {
+            const resultDiv = document.getElementById('sites-result');
+            try {
+                const response = await fetch(`${API_BASE}/api/sites/`);
+                const data = await response.json();
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ 成功 (${data.length}件)\n\n` + JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ エラー: ${error.message}`;
+            }
+        }
+
+        async function testCustomers() {
+            const resultDiv = document.getElementById('customers-result');
+            try {
+                const response = await fetch(`${API_BASE}/api/customers/`);
+                const data = await response.json();
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ 成功 (${data.length}件)\n\n` + JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ エラー: ${error.message}`;
+            }
+        }
+
+        async function testHierarchyData() {
+            const resultDiv = document.getElementById('hierarchy-result');
+            try {
+                const [customers, sites, categories] = await Promise.all([
+                    fetch(`${API_BASE}/api/customers/`).then(r => r.json()),
+                    fetch(`${API_BASE}/api/sites/`).then(r => r.json()),
+                    fetch(`${API_BASE}/api/categories/`).then(r => r.json())
+                ]);
+                
+                const result = {
+                    customers: customers.length,
+                    sites: sites.length,
+                    categories: categories.length,
+                    data: { customers, sites, categories }
+                };
+                
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ 成功\n顧客: ${result.customers}件\nサイト: ${result.sites}件\nカテゴリ: ${result.categories}件\n\n` + 
+                    JSON.stringify(result.data, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ エラー: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,292 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f3f4f6;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.loading-state .spinner {
+  font-size: 32px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-state p {
+  color: #dc2626;
+  font-size: 16px;
+  margin: 0;
+}
+
+.result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.result-summary {
+  background-color: #f9fafb;
+  border-radius: 6px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-item .label {
+  font-weight: 600;
+  color: #374151;
+  min-width: 100px;
+}
+
+.summary-item .value {
+  color: #6b7280;
+  word-break: break-all;
+}
+
+.summary-item.error-message .value {
+  color: #dc2626;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.status-success {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-crawl_failed,
+.status-error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.violations-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.violations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.violation-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 16px;
+  background-color: #ffffff;
+}
+
+.violation-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.severity-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.severity-low {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.severity-medium {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.severity-high {
+  background-color: #fed7aa;
+  color: #9a3412;
+}
+
+.severity-critical {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.violation-type {
+  font-weight: 500;
+  color: #374151;
+}
+
+.violation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 8px;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 100px;
+}
+
+.detail-value {
+  color: #111827;
+  flex: 1;
+}
+
+.alerts-info {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: #dbeafe;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1e40af;
+  font-size: 14px;
+}
+
+.info-icon {
+  font-size: 18px;
+}
+
+.no-violations {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.success-icon {
+  font-size: 48px;
+  color: #10b981;
+  margin-bottom: 12px;
+}
+
+.no-violations p {
+  color: #6b7280;
+  font-size: 16px;
+  margin: 0;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.close-footer-button {
+  padding: 8px 16px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.close-footer-button:hover {
+  background-color: #2563eb;
+}

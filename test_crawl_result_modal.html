@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クロール結果モーダルテスト</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        h2 {
+            color: #666;
+            font-size: 18px;
+            margin-top: 0;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #2563eb;
+        }
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status.success {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        .status.error {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .status.info {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+        pre {
+            background-color: #f3f4f6;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <h1>クロール結果モーダル機能テスト</h1>
+    
+    <div class="test-section">
+        <h2>1. サイト一覧取得</h2>
+        <button onclick="loadSites()">サイト一覧を取得</button>
+        <div id="sites-status"></div>
+        <div id="sites-list"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. クロール実行</h2>
+        <p>サイトを選択してクロールを実行:</p>
+        <select id="site-select" style="padding: 8px; margin-right: 10px; border-radius: 4px; border: 1px solid #d1d5db;">
+            <option value="">サイトを選択...</option>
+        </select>
+        <button onclick="triggerCrawl()" id="crawl-btn">クロール開始</button>
+        <div id="crawl-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. クロール結果確認</h2>
+        <p>ジョブIDを入力して結果を確認:</p>
+        <input type="text" id="job-id-input" placeholder="ジョブID" style="padding: 8px; margin-right: 10px; border-radius: 4px; border: 1px solid #d1d5db; width: 300px;">
+        <button onclick="checkCrawlResult()">結果を確認</button>
+        <div id="result-status"></div>
+        <div id="result-data"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+        let sites = [];
+        let currentJobId = null;
+
+        async function loadSites() {
+            const statusDiv = document.getElementById('sites-status');
+            const listDiv = document.getElementById('sites-list');
+            
+            statusDiv.innerHTML = '<div class="status info"><span class="spinner">⟳</span> サイト一覧を読み込み中...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/sites/`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                sites = await response.json();
+                
+                statusDiv.innerHTML = `<div class="status success">✓ ${sites.length}件のサイトを取得しました</div>`;
+                
+                // Update select dropdown
+                const select = document.getElementById('site-select');
+                select.innerHTML = '<option value="">サイトを選択...</option>';
+                sites.forEach(site => {
+                    const option = document.createElement('option');
+                    option.value = site.id;
+                    option.textContent = `${site.name} (${site.url})`;
+                    select.appendChild(option);
+                });
+                
+                // Display sites
+                listDiv.innerHTML = '<pre>' + JSON.stringify(sites, null, 2) + '</pre>';
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">✗ エラー: ${error.message}</div>`;
+            }
+        }
+
+        async function triggerCrawl() {
+            const siteId = document.getElementById('site-select').value;
+            const statusDiv = document.getElementById('crawl-status');
+            const btn = document.getElementById('crawl-btn');
+            
+            if (!siteId) {
+                statusDiv.innerHTML = '<div class="status error">✗ サイトを選択してください</div>';
+                return;
+            }
+            
+            btn.disabled = true;
+            statusDiv.innerHTML = '<div class="status info"><span class="spinner">⟳</span> クロールを開始中...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/crawl/site/${siteId}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentJobId = data.job_id;
+                
+                statusDiv.innerHTML = `
+                    <div class="status success">
+                        ✓ クロールを開始しました<br>
+                        ジョブID: <strong>${data.job_id}</strong>
+                    </div>
+                `;
+                
+                // Auto-fill job ID input
+                document.getElementById('job-id-input').value = data.job_id;
+                
+                // Start polling
+                pollCrawlStatus(data.job_id);
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">✗ エラー: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function pollCrawlStatus(jobId) {
+            const statusDiv = document.getElementById('crawl-status');
+            let attempts = 0;
+            const maxAttempts = 60;
+            
+            const poll = async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/crawl/status/${jobId}`);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'completed') {
+                        statusDiv.innerHTML = `
+                            <div class="status success">
+                                ✓ クロール完了<br>
+                                ジョブID: <strong>${jobId}</strong><br>
+                                ステータス: <strong>${data.status}</strong>
+                            </div>
+                        `;
+                        return;
+                    } else if (data.status === 'failed') {
+                        statusDiv.innerHTML = `
+                            <div class="status error">
+                                ✗ クロール失敗<br>
+                                ジョブID: <strong>${jobId}</strong>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    // Still running
+                    attempts++;
+                    statusDiv.innerHTML = `
+                        <div class="status info">
+                            <span class="spinner">⟳</span> クロール実行中... (${attempts}/${maxAttempts})<br>
+                            ステータス: <strong>${data.status}</strong>
+                        </div>
+                    `;
+                    
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 5000);
+                    } else {
+                        statusDiv.innerHTML = '<div class="status error">✗ タイムアウト</div>';
+                    }
+                } catch (error) {
+                    statusDiv.innerHTML = `<div class="status error">✗ ステータス確認エラー: ${error.message}</div>`;
+                }
+            };
+            
+            poll();
+        }
+
+        async function checkCrawlResult() {
+            const jobId = document.getElementById('job-id-input').value;
+            const statusDiv = document.getElementById('result-status');
+            const dataDiv = document.getElementById('result-data');
+            
+            if (!jobId) {
+                statusDiv.innerHTML = '<div class="status error">✗ ジョブIDを入力してください</div>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<div class="status info"><span class="spinner">⟳</span> 結果を取得中...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/crawl/status/${jobId}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                
+                statusDiv.innerHTML = `
+                    <div class="status success">
+                        ✓ 結果を取得しました<br>
+                        ステータス: <strong>${data.status}</strong>
+                    </div>
+                `;
+                
+                dataDiv.innerHTML = '<h3>クロール結果データ:</h3><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                
+                // Display violations if any
+                if (data.result && data.result.violations && data.result.violations.length > 0) {
+                    dataDiv.innerHTML += `
+                        <h3>検出された違反 (${data.result.violations.length}件):</h3>
+                        <pre>${JSON.stringify(data.result.violations, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">✗ エラー: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-load sites on page load
+        window.addEventListener('load', loadSites);
+    </script>
+</body>
+</html>
