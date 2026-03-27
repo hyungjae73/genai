@@ -2,14 +2,23 @@
 Pytest configuration and shared fixtures.
 
 This module provides shared test fixtures and configuration for all tests.
+Uses testcontainers-python to manage a PostgreSQL 15 container for testing.
 """
 
 import os
+import subprocess
 import pytest
-import asyncio
 from hypothesis import settings as hypothesis_settings, HealthCheck
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session
+from testcontainers.postgres import PostgresContainer
+from fastapi.testclient import TestClient
 
-# Register hypothesis profile with min 100 examples
+from src.models import Base
+from src.database import get_db
+from src.main import app
+
+# Hypothesis settings
 hypothesis_settings.register_profile(
     "ci",
     max_examples=100,
@@ -22,37 +31,82 @@ hypothesis_settings.register_profile(
 hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 
-# Try PostgreSQL first, fallback to SQLite if not available
-# Note: SQLite doesn't support JSONB, so some tests may be skipped
-def get_test_database_url():
-    """Get test database URL, with fallback to SQLite."""
-    pg_url = "postgresql+asyncpg://payment_monitor:payment_monitor_pass@localhost:5432/payment_monitor_test"
-    sqlite_url = "sqlite+aiosqlite:///:memory:"
-    
-    # Check if PostgreSQL is available
-    import socket
+def _is_docker_available() -> bool:
+    """Check if Docker daemon is available."""
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex(('localhost', 5432))
-        sock.close()
-        if result == 0:
-            return pg_url
-    except:
-        pass
-    
-    # Fallback to SQLite
-    print("\n⚠️  PostgreSQL not available, using SQLite (JSONB tests will be skipped)")
-    return sqlite_url
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
-os.environ["TEST_DATABASE_URL"] = os.getenv("TEST_DATABASE_URL", get_test_database_url())
-os.environ["USE_SQLITE"] = "true" if "sqlite" in os.environ["TEST_DATABASE_URL"] else "false"
+DOCKER_AVAILABLE = _is_docker_available()
+
+# Skip marker for tests that require Docker
+requires_docker = pytest.mark.skipif(
+    not DOCKER_AVAILABLE,
+    reason="Docker is not available",
+)
 
 
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+def postgres_container():
+    """Start a PostgreSQL container for the test session."""
+    if not DOCKER_AVAILABLE:
+        pytest.skip("Docker is not available")
+
+    with PostgresContainer("postgres:15-alpine") as container:
+        yield container
+
+
+@pytest.fixture(scope="session")
+def engine(postgres_container):
+    """Create a SQLAlchemy engine from the container connection URL."""
+    url = postgres_container.get_connection_url()
+    eng = create_engine(url, echo=False)
+    yield eng
+    eng.dispose()
+
+
+@pytest.fixture(scope="session")
+def tables(engine):
+    """Create all tables at session start, drop them at session end."""
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def db_session(engine, tables):
+    """Function-scoped session with transaction rollback for test isolation."""
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+
+    # Support nested transactions (SAVEPOINTs) inside the outer transaction
+    @event.listens_for(session, "after_transaction_end")
+    def restart_savepoint(session, transaction):
+        if transaction.nested and not transaction._parent.nested:
+            session.begin_nested()
+
+    yield session
+
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def client(db_session):
+    """FastAPI TestClient with db_session injected via dependency override."""
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
