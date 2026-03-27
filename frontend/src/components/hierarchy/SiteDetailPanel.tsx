@@ -4,13 +4,14 @@ import ContractTab from './tabs/ContractTab';
 import ScreenshotTab from './tabs/ScreenshotTab';
 import VerificationTab from './tabs/VerificationTab';
 import AlertTab from './tabs/AlertTab';
+import ScheduleTab from './tabs/ScheduleTab';
 
 export interface SiteDetailPanelProps {
   siteId: number;
   customerName: string;
 }
 
-export type TabType = 'contracts' | 'screenshots' | 'verification' | 'alerts';
+export type TabType = 'contracts' | 'screenshots' | 'verification' | 'alerts' | 'schedule';
 
 const SiteDetailPanel = ({ siteId, customerName }: SiteDetailPanelProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('contracts');
@@ -30,11 +31,12 @@ const SiteDetailPanel = ({ siteId, customerName }: SiteDetailPanelProps) => {
       screenshots: 'スクリーンショット',
       verification: '検証・比較',
       alerts: 'アラート',
+      schedule: 'スケジュール',
     };
     return labels[tab];
   };
 
-  const tabs: TabType[] = ['contracts', 'screenshots', 'verification', 'alerts'];
+  const tabs: TabType[] = ['contracts', 'screenshots', 'verification', 'alerts', 'schedule'];
 
   return (
     <div className="site-detail-panel">
@@ -69,6 +71,9 @@ const SiteDetailPanel = ({ siteId, customerName }: SiteDetailPanelProps) => {
         )}
         {activeTab === 'alerts' && loadedTabs.has('alerts') && (
           <AlertTab siteId={siteId} customerName={customerName} />
+        )}
+        {activeTab === 'schedule' && loadedTabs.has('schedule') && (
+          <ScheduleTab siteId={siteId} />
         )}
       </div>
     </div>
