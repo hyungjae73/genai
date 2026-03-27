@@ -76,7 +76,7 @@ class ScreenshotCapture:
         
         try:
             # Navigate to URL
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             
             # Wait for additional time to ensure page is fully loaded
             await asyncio.sleep(wait_time / 1000)

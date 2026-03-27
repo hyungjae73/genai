@@ -18,10 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add screenshot_path column to crawl_results table
-    op.add_column('crawl_results', sa.Column('screenshot_path', sa.String(length=500), nullable=True))
+    # screenshot_path already added in fdc38e236687 — no-op
+    pass
 
 
 def downgrade() -> None:
-    # Remove screenshot_path column from crawl_results table
-    op.drop_column('crawl_results', 'screenshot_path')
+    # no-op (column managed by fdc38e236687)
+    pass

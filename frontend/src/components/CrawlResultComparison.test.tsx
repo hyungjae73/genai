@@ -52,6 +52,7 @@ const makeExtractedData = (
   id,
   crawl_result_id: crawlResultId,
   site_id: 1,
+  source: 'html',
   product_info: { name: '商品A', sku: 'SKU-001' },
   price_info: [{ amount: 1000, currency: 'JPY', price_type: '通常価格' }],
   payment_methods: null,
@@ -231,7 +232,11 @@ describe('CrawlResultComparison', () => {
         makeCrawlResult(1, '2024-01-01T00:00:00Z'),
         makeCrawlResult(2, '2024-02-01T00:00:00Z'),
       ]);
-      mockFetchExtractedData.mockRejectedValueOnce(new Error('比較データの取得に失敗'));
+      // Both fetches reject — Promise.allSettled treats them as { status: 'rejected' }
+      // so both left and right become null, triggering the "no data" message.
+      mockFetchExtractedData
+        .mockRejectedValueOnce(new Error('比較データの取得に失敗'))
+        .mockRejectedValueOnce(new Error('比較データの取得に失敗'));
 
       render(<CrawlResultComparison siteId={1} />);
       await waitFor(() => {
@@ -243,7 +248,7 @@ describe('CrawlResultComparison', () => {
       fireEvent.click(screen.getByText('比較する'));
 
       await waitFor(() => {
-        expect(screen.getByText(/比較データの取得に失敗/)).toBeInTheDocument();
+        expect(screen.getByText(/抽出データがありません/)).toBeInTheDocument();
       });
     });
 

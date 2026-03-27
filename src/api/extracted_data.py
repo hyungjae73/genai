@@ -169,15 +169,27 @@ def _serialize_for_json(obj: object) -> object:
 
 def _to_response(record: ExtractedPaymentInfo) -> ExtractedPaymentInfoResponse:
     """Convert an ExtractedPaymentInfo model to its response schema."""
+    metadata = dict(record.extraction_metadata) if record.extraction_metadata else {}
+
+    # Include screenshot_path from the parent crawl_result if available
+    if "screenshot_path" not in metadata:
+        try:
+            cr = record.crawl_result
+            if cr and cr.screenshot_path:
+                metadata["screenshot_path"] = cr.screenshot_path
+        except Exception:
+            pass
+
     return ExtractedPaymentInfoResponse(
         id=record.id,
         crawl_result_id=record.crawl_result_id,
         site_id=record.site_id,
+        source=record.source,
         product_info=record.product_info,
         price_info=record.price_info,
         payment_methods=record.payment_methods,
         fees=record.fees,
-        metadata=record.extraction_metadata,
+        metadata=metadata or None,
         confidence_scores=record.confidence_scores,
         overall_confidence_score=record.overall_confidence_score,
         status=record.status,

@@ -236,7 +236,7 @@ class CrawlerEngine:
             status_code = response.status
             
             # Wait for page to be fully loaded
-            await page.wait_for_load_state("networkidle", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
             
             # Get HTML content
             html_content = await page.content()

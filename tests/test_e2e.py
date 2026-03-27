@@ -8,10 +8,8 @@ crawling, analysis, validation, and alerting.
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from src.models import Base, MonitoringSite, ContractCondition, CrawlResult, Violation, Alert
+from src.models import Customer, MonitoringSite, ContractCondition, CrawlResult, Violation, Alert
 from src.crawler import CrawlerEngine
 from src.analyzer import ContentAnalyzer
 from src.validator import ValidationEngine
@@ -19,23 +17,20 @@ from src.alert_system import AlertSystem
 
 
 @pytest.fixture
-def db_session():
-    """Create an in-memory database for testing."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-
-
-@pytest.fixture
 def sample_site(db_session):
     """Create a sample monitoring site."""
+    customer = Customer(
+        name="Example Corp",
+        email="contact@example.com",
+        is_active=True
+    )
+    db_session.add(customer)
+    db_session.flush()
+
     site = MonitoringSite(
-        company_name="Example Corp",
-        domain="example.com",
-        target_url="https://example.com/pricing",
+        customer_id=customer.id,
+        name="Example Corp Site",
+        url="https://example.com/pricing",
         is_active=True
     )
     db_session.add(site)
@@ -96,7 +91,7 @@ async def test_e2e_site_registration_to_alert_workflow(db_session, sample_site, 
     
     with patch.object(crawler, '_fetch_page', return_value=mock_html):
         crawl_result = await crawler.crawl_site(
-            url=sample_site.target_url,
+            url=sample_site.url,
             site_id=sample_site.id
         )
     
@@ -292,7 +287,7 @@ def test_e2e_database_models_relationships(db_session, sample_site, sample_contr
     # Test Site → CrawlResult relationship
     crawl_result = CrawlResult(
         site_id=sample_site.id,
-        url=sample_site.target_url,
+        url=sample_site.url,
         html_content="<html>test</html>",
         status_code=200
     )

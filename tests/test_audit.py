@@ -5,55 +5,9 @@ Tests for audit logging functionality.
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Index
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy.types import JSON
 
+from src.models import AuditLog
 from src.security.audit import AuditLogger, audit_operation
-
-
-# Create a test-specific Base and AuditLog model for SQLite compatibility
-class TestBase(DeclarativeBase):
-    """Base class for test models."""
-    pass
-
-
-class TestAuditLog(TestBase):
-    """Test version of AuditLog that uses JSON instead of JSONB for SQLite compatibility."""
-    __tablename__ = "audit_logs"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user = Column(String(255), nullable=False)
-    action = Column(String(100), nullable=False)
-    resource_type = Column(String(100), nullable=False)
-    resource_id = Column(Integer, nullable=True)
-    details = Column(JSON, nullable=True)  # Use JSON instead of JSONB for SQLite
-    ip_address = Column(String(45), nullable=True)
-    user_agent = Column(Text, nullable=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
-    __table_args__ = (
-        Index('idx_audit_user', 'user'),
-        Index('idx_audit_action', 'action'),
-        Index('idx_audit_resource', 'resource_type', 'resource_id'),
-        Index('idx_audit_timestamp', 'timestamp'),
-    )
-
-
-@pytest.fixture
-def db_session(monkeypatch):
-    """Create an in-memory SQLite database for testing."""
-    engine = create_engine("sqlite:///:memory:")
-    TestBase.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    
-    # Monkey patch the AuditLog import in the audit module to use our test version
-    import src.security.audit
-    monkeypatch.setattr(src.security.audit, 'AuditLog', TestAuditLog)
-    
-    yield session
-    session.close()
 
 
 @pytest.fixture
@@ -81,7 +35,7 @@ def test_log_basic(audit_logger, db_session):
     assert log.timestamp is not None
     
     # Verify it's in the database
-    stored_log = db_session.query(TestAuditLog).filter_by(id=log.id).first()
+    stored_log = db_session.query(AuditLog).filter_by(id=log.id).first()
     assert stored_log is not None
     assert stored_log.user == "admin@example.com"
 
@@ -251,19 +205,19 @@ def test_get_logs_filter_by_date_range(audit_logger, db_session):
     now = datetime.utcnow()
     
     # Create logs with different timestamps
-    log1 = TestAuditLog(
+    log1 = AuditLog(
         user="user1",
         action="create",
         resource_type="site",
         timestamp=now - timedelta(days=5)
     )
-    log2 = TestAuditLog(
+    log2 = AuditLog(
         user="user2",
         action="update",
         resource_type="site",
         timestamp=now - timedelta(days=2)
     )
-    log3 = TestAuditLog(
+    log3 = AuditLog(
         user="user3",
         action="delete",
         resource_type="site",
@@ -297,19 +251,19 @@ def test_get_logs_ordered_by_timestamp(audit_logger, db_session):
     now = datetime.utcnow()
     
     # Create logs with different timestamps
-    log1 = TestAuditLog(
+    log1 = AuditLog(
         user="user1",
         action="create",
         resource_type="site",
         timestamp=now - timedelta(hours=2)
     )
-    log2 = TestAuditLog(
+    log2 = AuditLog(
         user="user2",
         action="update",
         resource_type="site",
         timestamp=now - timedelta(hours=1)
     )
-    log3 = TestAuditLog(
+    log3 = AuditLog(
         user="user3",
         action="delete",
         resource_type="site",
@@ -343,7 +297,7 @@ def test_audit_operation_convenience_function(db_session):
     assert log.resource_id == 999
     
     # Verify it's in the database
-    stored_log = db_session.query(TestAuditLog).filter_by(id=log.id).first()
+    stored_log = db_session.query(AuditLog).filter_by(id=log.id).first()
     assert stored_log is not None
 
 

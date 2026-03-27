@@ -1,0 +1,13 @@
+/* FakeSites page — トークンベーススタイル */
+
+.fake-sites {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.fake-sites h1 {
+  font-size: var(--font-xl);
+  color: var(--color-text-primary);
+  margin: 0;
+}

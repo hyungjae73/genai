@@ -65,7 +65,7 @@ class ScreenshotManager:
         self,
         url: str,
         site_id: int,
-        timeout: int = 10,
+        timeout: int = 30,
     ) -> Optional[str]:
         """
         Capture a full-page screenshot of the given URL.
@@ -81,7 +81,7 @@ class ScreenshotManager:
         Args:
             url: The page URL to capture.
             site_id: The site identifier.
-            timeout: Overall timeout in seconds (default 10, Req 19.3).
+            timeout: Overall timeout in seconds (default 30).
 
         Returns:
             The file path of the saved screenshot, or None on failure.
@@ -132,24 +132,118 @@ class ScreenshotManager:
         file_path: Path,
         timeout: int,
     ) -> str:
-        """Inner coroutine that performs the actual Playwright capture."""
-        # Ensure directory exists
+        """Inner coroutine that performs the actual Playwright capture.
+
+        Rendering wait strategy (optimised for SPA / Shopify-style sites):
+        1. Navigate with ``domcontentloaded`` (fast initial load)
+        2. Wait for ``networkidle`` state separately (tolerates slow assets)
+        3. Run an in-page readiness check:
+           a. Web fonts loaded
+           b. All visible ``<img>`` elements finished loading
+           c. Lazy-load images scrolled into view and loaded
+           d. DOM mutations settled (no changes for 1 000 ms)
+        """
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Use a shorter per-step timeout (half of overall) so the
-        # asyncio.wait_for wrapper can still fire if Playwright hangs.
-        step_timeout_ms = max(int(timeout * 1000 * 0.6), 3000)
+        # Per-step timeout: 60 % of overall so asyncio.wait_for can still fire
+        step_timeout_ms = max(int(timeout * 1000 * 0.6), 5000)
 
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             try:
-                page = await browser.new_page()
+                page = await browser.new_page(
+                    viewport={"width": 1920, "height": 1080},
+                    device_scale_factor=2,
+                )
                 try:
+                    # Step 1: fast initial navigation
                     await page.goto(
                         url,
-                        wait_until="networkidle",
+                        wait_until="domcontentloaded",
                         timeout=step_timeout_ms,
                     )
+
+                    # Step 2: wait for network to settle (SPA data fetches)
+                    try:
+                        await page.wait_for_load_state(
+                            "networkidle", timeout=step_timeout_ms
+                        )
+                    except Exception:
+                        # Some sites never reach networkidle; continue anyway
+                        logger.debug(
+                            "networkidle not reached within timeout for site_id=%d, continuing",
+                            site_id,
+                        )
+
+                    # Step 3: in-page readiness — fonts, images, lazy-load, DOM stable
+                    await page.evaluate("""() => {
+                        return new Promise((resolve) => {
+                            /* --- helpers --- */
+                            function waitForDomStable(quietMs, maxMs) {
+                                return new Promise((res) => {
+                                    let timer = null;
+                                    const observer = new MutationObserver(() => {
+                                        if (timer) clearTimeout(timer);
+                                        timer = setTimeout(() => { observer.disconnect(); res(); }, quietMs);
+                                    });
+                                    observer.observe(document.body, {
+                                        childList: true, subtree: true, attributes: true
+                                    });
+                                    // Kick-start: if DOM is already quiet, resolve after quietMs
+                                    timer = setTimeout(() => { observer.disconnect(); res(); }, maxMs);
+                                });
+                            }
+
+                            function scrollAndWaitForLazy() {
+                                return new Promise((res) => {
+                                    // Scroll to bottom to trigger lazy-load images
+                                    const scrollStep = window.innerHeight;
+                                    let scrolled = 0;
+                                    const maxScroll = document.body.scrollHeight;
+                                    function step() {
+                                        scrolled += scrollStep;
+                                        window.scrollTo(0, scrolled);
+                                        if (scrolled < maxScroll) {
+                                            requestAnimationFrame(step);
+                                        } else {
+                                            // Scroll back to top and give lazy images time to load
+                                            window.scrollTo(0, 0);
+                                            setTimeout(res, 500);
+                                        }
+                                    }
+                                    step();
+                                });
+                            }
+
+                            const promises = [];
+
+                            // 1. Web fonts
+                            if (document.fonts && document.fonts.ready) {
+                                promises.push(document.fonts.ready);
+                            }
+
+                            // 2. Trigger lazy-load images by scrolling
+                            promises.push(scrollAndWaitForLazy());
+
+                            // 3. Wait for DOM mutations to settle (1 s quiet, 5 s max)
+                            promises.push(waitForDomStable(1000, 5000));
+
+                            Promise.all(promises).then(() => {
+                                // 4. After DOM is stable, wait for all <img> to finish
+                                const imgs = Array.from(document.querySelectorAll('img'));
+                                const imgPromises = imgs
+                                    .filter(img => !img.complete)
+                                    .map(img => new Promise((r) => {
+                                        img.addEventListener('load', r, {once: true});
+                                        img.addEventListener('error', r, {once: true});
+                                        // Safety: don't wait forever for a single image
+                                        setTimeout(r, 3000);
+                                    }));
+                                return Promise.all(imgPromises);
+                            }).then(() => resolve());
+                        });
+                    }""")
+
                     await page.screenshot(
                         path=str(file_path),
                         full_page=True,
@@ -161,7 +255,8 @@ class ScreenshotManager:
             finally:
                 await browser.close()
 
-        # Compress if needed
+        # Compress if needed — but keep a high-res copy for OCR
+        self._save_ocr_copy(str(file_path))
         self.compress_screenshot(str(file_path))
         return str(file_path)
 
@@ -209,6 +304,39 @@ class ScreenshotManager:
             )
         except Exception:
             logger.exception("Failed to compress screenshot: %s", image_path)
+
+    @staticmethod
+    def _save_ocr_copy(image_path: str) -> None:
+        """
+        Save a high-resolution copy of the screenshot for OCR processing.
+
+        The OCR copy is stored alongside the original with an ``_ocr`` suffix
+        so that compression of the display copy does not degrade OCR quality.
+        """
+        path = Path(image_path)
+        if not path.exists():
+            return
+        ocr_path = path.with_name(path.stem + "_ocr" + path.suffix)
+        try:
+            import shutil
+            shutil.copy2(str(path), str(ocr_path))
+        except Exception:
+            logger.warning("Failed to create OCR copy: %s", ocr_path)
+
+    @staticmethod
+    def get_ocr_image_path(screenshot_path: str) -> str:
+        """
+        Return the path to the high-res OCR copy of a screenshot.
+
+        Falls back to the original path if the OCR copy does not exist.
+        """
+        p = Path(screenshot_path)
+        ocr_path = p.with_name(p.stem + "_ocr" + p.suffix)
+        if ocr_path.exists():
+            return str(ocr_path)
+        return screenshot_path
+
+
 
     def cleanup_old_screenshots(self, retention_days: int = 90) -> int:
         """

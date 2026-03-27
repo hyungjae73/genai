@@ -2,6 +2,8 @@
 API endpoints for monitoring site management.
 """
 
+import json
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from typing import List
@@ -71,7 +73,54 @@ async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: Sessi
     # Handle monitoring_enabled field mapping
     if 'monitoring_enabled' in update_data:
         site.is_active = update_data.pop('monitoring_enabled')
-    
+
+    # Validate pre_capture_script JSON (Req 26.5)
+    if 'pre_capture_script' in update_data:
+        pcs = update_data['pre_capture_script']
+        if pcs is not None:
+            if isinstance(pcs, str):
+                try:
+                    pcs = json.loads(pcs)
+                    update_data['pre_capture_script'] = pcs
+                except (json.JSONDecodeError, TypeError):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="pre_capture_script must be valid JSON",
+                    )
+            if not isinstance(pcs, list):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="pre_capture_script must be a JSON array of action objects",
+                )
+
+    # Validate crawl_priority
+    if 'crawl_priority' in update_data:
+        cp = update_data['crawl_priority']
+        if cp is not None and cp not in ('high', 'normal', 'low'):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="crawl_priority must be 'high', 'normal', or 'low'",
+            )
+
+    # Validate plugin_config JSON
+    if 'plugin_config' in update_data:
+        pc = update_data['plugin_config']
+        if pc is not None:
+            if isinstance(pc, str):
+                try:
+                    pc = json.loads(pc)
+                    update_data['plugin_config'] = pc
+                except (json.JSONDecodeError, TypeError):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="plugin_config must be valid JSON",
+                    )
+            if not isinstance(pc, dict):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="plugin_config must be a JSON object",
+                )
+
     for field, value in update_data.items():
         setattr(site, field, value)
     

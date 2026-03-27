@@ -13,170 +13,14 @@ Covers:
 
 import pytest
 from datetime import datetime
-from sqlalchemy import (
-    create_engine, Column, Integer, Float, String, Text,
-    DateTime, Boolean, ForeignKey,
+
+from src.models import (
+    Customer,
+    MonitoringSite,
+    CrawlResult,
+    ExtractedPaymentInfo,
+    PriceHistory,
 )
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy.pool import StaticPool
-from sqlalchemy.types import JSON
-from fastapi.testclient import TestClient
-
-from src.main import app
-from src.database import get_db
-from src.auth import verify_api_key
-
-
-# ---------------------------------------------------------------------------
-# Test-specific models (JSON instead of JSONB for SQLite)
-# ---------------------------------------------------------------------------
-
-class TestBase(DeclarativeBase):
-    pass
-
-
-class TCustomer(TestBase):
-    __tablename__ = "customers"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    company_name = Column(String(255), nullable=True)
-    email = Column(String(255), nullable=False)
-    phone = Column(String(50), nullable=True)
-    address = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
-
-
-class TMonitoringSite(TestBase):
-    __tablename__ = "monitoring_sites"
-    id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    url = Column(Text, nullable=False)
-    is_active = Column(Boolean, default=True)
-    last_crawled_at = Column(DateTime, nullable=True)
-    compliance_status = Column(String(50), default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    category_id = Column(Integer, nullable=True)
-
-
-class TCrawlResult(TestBase):
-    __tablename__ = "crawl_results"
-    id = Column(Integer, primary_key=True)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
-    url = Column(Text, nullable=False)
-    html_content = Column(Text, nullable=False)
-    screenshot_path = Column(Text, nullable=True)
-    status_code = Column(Integer, nullable=False)
-    crawled_at = Column(DateTime, default=datetime.utcnow)
-
-
-class TExtractedPaymentInfo(TestBase):
-    __tablename__ = "extracted_payment_info"
-    id = Column(Integer, primary_key=True)
-    crawl_result_id = Column(Integer, ForeignKey("crawl_results.id"), nullable=False)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
-    product_info = Column(JSON, nullable=True)
-    price_info = Column(JSON, nullable=True)
-    payment_methods = Column(JSON, nullable=True)
-    fees = Column(JSON, nullable=True)
-    extraction_metadata = Column("metadata", JSON, nullable=True)
-    confidence_scores = Column(JSON, nullable=True)
-    overall_confidence_score = Column(Float, nullable=True)
-    status = Column(String(20), default="pending", nullable=False)
-    language = Column(String(10), nullable=True)
-    extracted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class TAuditLog(TestBase):
-    __tablename__ = "audit_logs"
-    id = Column(Integer, primary_key=True)
-    user = Column(String(255), nullable=False)
-    action = Column(String(100), nullable=False)
-    resource_type = Column(String(100), nullable=False)
-    resource_id = Column(Integer, nullable=True)
-    details = Column(JSON, nullable=True)
-    ip_address = Column(String(45), nullable=True)
-    user_agent = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-
-
-class TPriceHistory(TestBase):
-    __tablename__ = "price_history"
-    id = Column(Integer, primary_key=True)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
-    product_identifier = Column(String(500), nullable=False)
-    price = Column(Float, nullable=False)
-    currency = Column(String(10), nullable=False)
-    price_type = Column(String(50), nullable=False)
-    previous_price = Column(Float, nullable=True)
-    price_change_amount = Column(Float, nullable=True)
-    price_change_percentage = Column(Float, nullable=True)
-    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    extracted_payment_info_id = Column(Integer, nullable=True)
-
-
-# ---------------------------------------------------------------------------
-# Shared engine / session (StaticPool keeps a single connection for threads)
-# ---------------------------------------------------------------------------
-
-_engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-_SessionLocal = sessionmaker(bind=_engine)
-
-
-@pytest.fixture(autouse=True)
-def _setup_tables():
-    """Create tables before each test, drop after."""
-    TestBase.metadata.create_all(_engine)
-    yield
-    TestBase.metadata.drop_all(_engine)
-
-
-@pytest.fixture
-def db_session():
-    session = _SessionLocal()
-    yield session
-    session.close()
-
-
-@pytest.fixture(autouse=True)
-def _patch_models(monkeypatch):
-    """Redirect ORM model references to our SQLite-compatible test models."""
-    import src.api.extracted_data as ep_mod
-    import src.api.screenshots as ss_mod
-    monkeypatch.setattr(ep_mod, "ExtractedPaymentInfo", TExtractedPaymentInfo)
-    monkeypatch.setattr(ep_mod, "AuditLog", TAuditLog)
-    monkeypatch.setattr(ep_mod, "PriceHistory", TPriceHistory)
-    monkeypatch.setattr(ss_mod, "CrawlResult", TCrawlResult)
-
-
-@pytest.fixture
-def client():
-    """FastAPI TestClient with overridden DB and auth dependencies."""
-
-    def _override_get_db():
-        session = _SessionLocal()
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    async def _override_auth(x_api_key: str = "dev-api-key"):
-        return x_api_key
-
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[verify_api_key] = _override_auth
-    yield TestClient(app)
-    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -186,11 +30,11 @@ def client():
 
 def _seed_site(session):
     """Create a customer + monitoring site, return (customer, site)."""
-    customer = TCustomer(name="Test Customer", email="test@example.com")
+    customer = Customer(name="Test Customer", email="test@example.com")
     session.add(customer)
     session.flush()
 
-    site = TMonitoringSite(
+    site = MonitoringSite(
         customer_id=customer.id,
         name="Test Site",
         url="https://example.com",
@@ -202,7 +46,7 @@ def _seed_site(session):
 
 def _seed_crawl_result(session, site_id):
     """Create a crawl result for the given site."""
-    cr = TCrawlResult(
+    cr = CrawlResult(
         site_id=site_id,
         url="https://example.com/page",
         html_content="<html></html>",
@@ -211,6 +55,7 @@ def _seed_crawl_result(session, site_id):
     session.add(cr)
     session.flush()
     return cr
+
 
 
 def _seed_extracted_info(
@@ -222,7 +67,7 @@ def _seed_extracted_info(
     extracted_at=None,
 ):
     """Create an extracted payment info record."""
-    record = TExtractedPaymentInfo(
+    record = ExtractedPaymentInfo(
         crawl_result_id=crawl_result_id,
         site_id=site_id,
         product_info={"name": "Test Product", "sku": "SKU-001"},
@@ -243,7 +88,7 @@ def _seed_extracted_info(
 
 def _seed_price_history(session, site_id, product_id="product-1", price=1000.0, recorded_at=None):
     """Create a price history record."""
-    record = TPriceHistory(
+    record = PriceHistory(
         site_id=site_id,
         product_identifier=product_id,
         price=price,
@@ -268,7 +113,7 @@ class TestGetExtractedDataByCrawlResult:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/{}".format(cr.id))
         assert resp.status_code == 200
@@ -294,7 +139,7 @@ class TestGetExtractedDataByCrawlResult:
             overall_confidence=0.9,
             extracted_at=datetime(2024, 6, 1),
         )
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/{}".format(cr.id))
         assert resp.status_code == 200
@@ -308,7 +153,7 @@ class TestGetExtractedDataByCrawlResult:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         data = client.get("/api/extracted-data/{}".format(cr.id)).json()
         assert "confidence_scores" in data
@@ -328,7 +173,7 @@ class TestGetExtractedDataBySite:
         for i in range(3):
             cr = _seed_crawl_result(db_session, site.id)
             _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/site/{}".format(site.id))
         assert resp.status_code == 200
@@ -343,7 +188,7 @@ class TestGetExtractedDataBySite:
         for _ in range(5):
             cr = _seed_crawl_result(db_session, site.id)
             _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/site/{}?page=1&page_size=2".format(site.id))
         body = resp.json()
@@ -357,7 +202,7 @@ class TestGetExtractedDataBySite:
         for _ in range(5):
             cr = _seed_crawl_result(db_session, site.id)
             _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/site/{}?page=2&page_size=2".format(site.id))
         body = resp.json()
@@ -369,7 +214,7 @@ class TestGetExtractedDataBySite:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/site/{}?page=100&page_size=50".format(site.id))
         body = resp.json()
@@ -378,7 +223,7 @@ class TestGetExtractedDataBySite:
 
     def test_empty_site(self, client, db_session):
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/site/{}".format(site.id))
         body = resp.json()
@@ -388,7 +233,7 @@ class TestGetExtractedDataBySite:
     def test_invalid_page_param(self, client, db_session):
         """page < 1 should be rejected by FastAPI validation."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/extracted-data/site/{}?page=0".format(site.id))
         assert resp.status_code == 422
@@ -406,7 +251,7 @@ class TestUpdateExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.put(
             "/api/extracted-data/{}".format(info.id),
@@ -420,7 +265,7 @@ class TestUpdateExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.put(
             "/api/extracted-data/{}".format(info.id),
@@ -443,7 +288,7 @@ class TestUpdateExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.put(
             "/api/extracted-data/{}".format(info.id),
@@ -470,7 +315,7 @@ class TestApproveExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.post(
             "/api/extracted-data/{}/approve".format(info.id),
@@ -499,7 +344,7 @@ class TestRejectExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.post(
             "/api/extracted-data/{}/reject".format(info.id),
@@ -522,7 +367,7 @@ class TestRejectExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.post(
             "/api/extracted-data/{}/reject".format(info.id),
@@ -536,7 +381,7 @@ class TestRejectExtractedData:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.post(
             "/api/extracted-data/{}/reject".format(info.id),
@@ -558,7 +403,7 @@ class TestGetPriceHistory:
         _, site = _seed_site(db_session)
         _seed_price_history(db_session, site.id, "prod-1", 1000)
         _seed_price_history(db_session, site.id, "prod-1", 1200)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/price-history/{}/prod-1".format(site.id))
         assert resp.status_code == 200
@@ -568,7 +413,7 @@ class TestGetPriceHistory:
 
     def test_empty_history(self, client, db_session):
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/price-history/{}/nonexistent".format(site.id))
         assert resp.status_code == 200
@@ -590,7 +435,7 @@ class TestGetPriceHistory:
             db_session, site.id, "prod-1", 1200,
             recorded_at=datetime(2024, 6, 15),
         )
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get(
             "/api/price-history/{}/prod-1".format(site.id),
@@ -608,7 +453,7 @@ class TestGetPriceHistory:
         _, site = _seed_site(db_session)
         _seed_price_history(db_session, site.id, "prod-A", 500)
         _seed_price_history(db_session, site.id, "prod-B", 700)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/price-history/{}/prod-A".format(site.id))
         body = resp.json()
@@ -625,7 +470,7 @@ class TestGetPriceHistory:
             db_session, site.id, "prod-1", 1000,
             recorded_at=datetime(2024, 1, 1),
         )
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get("/api/price-history/{}/prod-1".format(site.id))
         items = resp.json()["items"]
@@ -649,7 +494,7 @@ class TestDeleteScreenshot:
         """Crawl result exists but has no screenshot."""
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.delete("/api/screenshots/{}".format(cr.id))
         assert resp.status_code == 404
