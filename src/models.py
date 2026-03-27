@@ -15,6 +15,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     Index,
@@ -91,6 +92,13 @@ class MonitoringSite(Base):
         Integer, ForeignKey("categories.id"), nullable=True
     )
     
+    # Pipeline architecture columns (Req 21)
+    pre_capture_script: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True, default=None)
+    crawl_priority: Mapped[str] = mapped_column(String(20), nullable=False, server_default='normal')
+    etag: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_modified_header: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    plugin_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True, default=None)
+    
     # Relationships
     customer: Mapped["Customer"] = relationship(
         "Customer", back_populates="sites"
@@ -112,6 +120,21 @@ class MonitoringSite(Base):
         Index("ix_monitoring_sites_compliance_status", "compliance_status"),
     )
     
+    @property
+    def domain(self) -> str:
+        """URLからドメイン名を抽出する。www.プレフィックスを除去。"""
+        if not self.url:
+            return ""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(self.url)
+            hostname = parsed.hostname or ""
+            if hostname.startswith("www."):
+                hostname = hostname[4:]
+            return hostname
+        except Exception:
+            return ""
+
     def __repr__(self) -> str:
         return f"<MonitoringSite(id={self.id}, name={self.name})>"
 
@@ -265,6 +288,12 @@ class Alert(Base):
     new_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     change_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
+    # Fake site detection fields
+    fake_domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    legitimate_domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    domain_similarity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    content_similarity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
     # Relationships
     violation: Mapped["Violation"] = relationship(
         "Violation", back_populates="alerts"
@@ -276,10 +305,48 @@ class Alert(Base):
         Index("ix_alerts_created_at", "created_at"),
         Index("ix_alerts_severity", "severity"),
         Index("ix_alerts_alert_type", "alert_type"),
+        Index("ix_alerts_fake_domain", "fake_domain"),
     )
     
     def __repr__(self) -> str:
         return f"<Alert(id={self.id}, type={self.alert_type}, severity={self.severity})>"
+
+
+class CrawlJob(Base):
+    """
+    Crawl job tracking model.
+
+    Persists crawl job status in the database instead of relying on
+    Redis / Celery result backend for status tracking.
+    """
+    __tablename__ = "crawl_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("monitoring_sites.id"), nullable=False
+    )
+    celery_task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )  # pending, running, completed, failed
+    result: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    site: Mapped["MonitoringSite"] = relationship("MonitoringSite")
+
+    __table_args__ = (
+        Index("ix_crawl_jobs_site_id", "site_id"),
+        Index("ix_crawl_jobs_status", "status"),
+        Index("ix_crawl_jobs_celery_task_id", "celery_task_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CrawlJob(id={self.id}, site_id={self.site_id}, status={self.status})>"
 
 
 class ExtractedPaymentInfo(Base):
@@ -298,6 +365,11 @@ class ExtractedPaymentInfo(Base):
     )
     site_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("monitoring_sites.id"), nullable=False
+    )
+    
+    # Extraction source: "html" (structured extraction) or "ocr" (screenshot OCR)
+    source: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="html"
     )
     
     # Extracted data (JSONB format)
@@ -605,6 +677,13 @@ class VerificationResult(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
+    # Pipeline architecture fields (Req 21.4)
+    structured_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    structured_data_violations: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    data_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    structured_data_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    evidence_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
@@ -624,6 +703,48 @@ class VerificationResult(Base):
     def __repr__(self) -> str:
         return f"<VerificationResult(id={self.id}, site_id={self.site_id}, status={self.status})>"
 
+
+class EvidenceRecord(Base):
+    """
+    Evidence record model.
+
+    Stores evidence data from crawl pipeline including screenshots,
+    ROI images, OCR text, and confidence scores for verification results.
+    evidence_type values: 'price_display', 'terms_notice', 'subscription_condition', 'general'
+    """
+    __tablename__ = "evidence_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    verification_result_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("verification_results.id"), nullable=False
+    )
+    variant_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    screenshot_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    roi_image_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    ocr_text: Mapped[str] = mapped_column(Text, nullable=False)
+    ocr_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    evidence_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    # Relationships
+    verification_result: Mapped["VerificationResult"] = relationship(
+        "VerificationResult", backref="evidence_records"
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("ix_evidence_records_verification_result_id", "verification_result_id"),
+        Index("ix_evidence_records_evidence_type", "evidence_type"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<EvidenceRecord(id={self.id}, "
+            f"verification_result_id={self.verification_result_id}, "
+            f"evidence_type={self.evidence_type})>"
+        )
 
 
 class Category(Base):
@@ -725,3 +846,86 @@ class ExtractedData(Base):
 
     def __repr__(self) -> str:
         return f"<ExtractedData(id={self.id}, screenshot_id={self.screenshot_id}, site_id={self.site_id})>"
+
+
+class CrawlSchedule(Base):
+    """
+    Crawl schedule model.
+
+    Stores per-site crawl scheduling configuration including priority,
+    interval, and delta crawl headers (ETag/Last-Modified).
+    One schedule per site (site_id is unique).
+    priority values: 'high', 'normal', 'low'
+    """
+    __tablename__ = "crawl_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("monitoring_sites.id"), nullable=False, unique=True
+    )
+    priority: Mapped[str] = mapped_column(String(20), nullable=False, default='normal')
+    next_crawl_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=1440)
+    last_etag: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_modified: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Relationships
+    site: Mapped["MonitoringSite"] = relationship(
+        "MonitoringSite", backref="crawl_schedule"
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("ix_crawl_schedules_next_crawl_at", "next_crawl_at"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CrawlSchedule(id={self.id}, site_id={self.site_id}, "
+            f"priority={self.priority}, next_crawl_at={self.next_crawl_at})>"
+        )
+
+
+import enum
+
+
+class ScrapingTaskStatus(str, enum.Enum):
+    """Strict state machine for scraping task lifecycle."""
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+
+
+class ScrapingTask(Base):
+    """
+    Tracks Celery-driven web scraping tasks with strict state management.
+
+    State transitions: PENDING → PROCESSING → SUCCESS | FAILED
+    """
+    __tablename__ = "scraping_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ScrapingTaskStatus.PENDING.value
+    )
+    result_minio_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_scraping_tasks_status", "status"),
+        Index("ix_scraping_tasks_target_url_status", "target_url", "status"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ScrapingTask(id={self.id}, url={self.target_url!r}, "
+            f"status={self.status})>"
+        )

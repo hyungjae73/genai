@@ -2,7 +2,7 @@
 Unit tests for VerificationResult model.
 
 Tests model creation, field validation, relationships, and queries
-using a SQLite in-memory database for isolation.
+using the shared PostgreSQL testcontainers fixtures for isolation.
 
 Validates: Requirements 5.1, 5.2
 """
@@ -10,55 +10,9 @@ Validates: Requirements 5.1, 5.2
 import pytest
 from datetime import datetime, timedelta
 
-from sqlalchemy import create_engine, event, JSON
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Session
 
-from src.models import Base, Customer, MonitoringSite, VerificationResult
-
-
-# --- SQLite JSONB compatibility ---
-# SQLite doesn't support JSONB, so we remap it to JSON for testing.
-
-@event.listens_for(Base.metadata, "column_reflect")
-def _remap_jsonb(inspector, table, column_info):
-    if isinstance(column_info["type"], JSONB):
-        column_info["type"] = JSON()
-
-
-# Patch JSONB to JSON at the dialect level for table creation
-_original_compile = None
-
-
-@pytest.fixture(scope="module")
-def engine():
-    """Create a SQLite in-memory engine with JSONB→JSON compilation support."""
-    eng = create_engine("sqlite:///:memory:")
-
-    # Register a compilation rule so JSONB renders as JSON in SQLite
-    from sqlalchemy.ext.compiler import compiles
-
-    @compiles(JSONB, "sqlite")
-    def _compile_jsonb_sqlite(type_, compiler, **kw):
-        return "JSON"
-
-    Base.metadata.create_all(bind=eng)
-    yield eng
-    Base.metadata.drop_all(bind=eng)
-
-
-@pytest.fixture
-def db_session(engine):
-    """Provide a transactional database session that rolls back after each test."""
-    connection = engine.connect()
-    transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
-
-    yield session
-
-    session.close()
-    transaction.rollback()
-    connection.close()
+from src.models import Customer, MonitoringSite, VerificationResult
 
 
 # --- Helper fixtures ---
@@ -267,3 +221,60 @@ class TestVerificationResultRepr:
         assert str(vr.id) in r
         assert str(site.id) in r
         assert "success" in r
+
+
+class TestVerificationResultPipelineColumns:
+    """Tests for pipeline architecture columns (Req 21.4)."""
+
+    def test_new_columns_default_to_none(self, db_session, site):
+        """New pipeline columns are nullable and default to None."""
+        vr = _make_verification(site)
+        db_session.add(vr)
+        db_session.flush()
+
+        fetched = db_session.get(VerificationResult, vr.id)
+        assert fetched.structured_data is None
+        assert fetched.structured_data_violations is None
+        assert fetched.data_source is None
+        assert fetched.structured_data_status is None
+        assert fetched.evidence_status is None
+
+    def test_set_structured_data_json(self, db_session, site):
+        """structured_data and structured_data_violations store JSON correctly."""
+        sd = {"product_name": "Test", "variants": [{"price": 1980, "data_source": "json_ld"}]}
+        sdv = [{"variant_name": "A", "contract_price": 1980, "actual_price": 2480}]
+        vr = _make_verification(
+            site,
+            structured_data=sd,
+            structured_data_violations=sdv,
+            data_source="json_ld",
+            structured_data_status="found",
+            evidence_status="collected",
+        )
+        db_session.add(vr)
+        db_session.flush()
+
+        fetched = db_session.get(VerificationResult, vr.id)
+        assert fetched.structured_data == sd
+        assert fetched.structured_data_violations == sdv
+        assert fetched.data_source == "json_ld"
+        assert fetched.structured_data_status == "found"
+        assert fetched.evidence_status == "collected"
+
+    def test_string_columns_accept_expected_values(self, db_session, site):
+        """data_source, structured_data_status, evidence_status accept valid string values."""
+        for ds, sds, es in [
+            ("shopify_api", "empty", "partial"),
+            ("microdata", "error", "none"),
+            ("html_fallback", "found", "collected"),
+        ]:
+            vr = _make_verification(
+                site, data_source=ds, structured_data_status=sds, evidence_status=es
+            )
+            db_session.add(vr)
+            db_session.flush()
+
+            fetched = db_session.get(VerificationResult, vr.id)
+            assert fetched.data_source == ds
+            assert fetched.structured_data_status == sds
+            assert fetched.evidence_status == es

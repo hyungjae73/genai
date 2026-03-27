@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { getCrawlResults } from '../services/api';
 import type { CrawlResult } from '../services/api';
-import { fetchExtractedData } from '../api/extractedData';
-import type { ExtractedPaymentInfo, PriceInfo, PaymentMethod, Fee } from '../types/extractedData';
+import { fetchExtractedData, fetchExtractedDataComparison } from '../api/extractedData';
+import type { ExtractedPaymentInfo, ExtractedDataComparison, PriceInfo, PaymentMethod, Fee } from '../types/extractedData';
+import { Select } from './ui/Select/Select';
 import './CrawlResultComparison.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
@@ -187,6 +188,13 @@ const CrawlResultComparison: React.FC<CrawlResultComparisonProps> = ({ siteId })
   const [comparing, setComparing] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
 
+  // HTML vs OCR comparison mode
+  const [compareMode, setCompareMode] = useState<'crawl' | 'source'>('crawl');
+  const [sourceCompareId, setSourceCompareId] = useState<number | ''>('');
+  const [sourceComparison, setSourceComparison] = useState<ExtractedDataComparison | null>(null);
+  const [sourceComparing, setSourceComparing] = useState(false);
+  const [sourceCompareError, setSourceCompareError] = useState<string | null>(null);
+
   // Load crawl results for the site
   useEffect(() => {
     let cancelled = false;
@@ -222,10 +230,22 @@ const CrawlResultComparison: React.FC<CrawlResultComparisonProps> = ({ siteId })
     setLeftData(null);
     setRightData(null);
     try {
-      const [left, right] = await Promise.all([
+      const results = await Promise.allSettled([
         fetchExtractedData(leftId),
         fetchExtractedData(rightId),
       ]);
+
+      const left = results[0].status === 'fulfilled' ? results[0].value : null;
+      const right = results[1].status === 'fulfilled' ? results[1].value : null;
+
+      if (!left && !right) {
+        setCompareError('両方のクロール結果に抽出データがありません。先にデータ抽出を実行してください。');
+      } else if (!left) {
+        setCompareError('比較元のクロール結果に抽出データがありません。');
+      } else if (!right) {
+        setCompareError('比較先のクロール結果に抽出データがありません。');
+      }
+
       setLeftData(left);
       setRightData(right);
     } catch (err: unknown) {
@@ -239,6 +259,41 @@ const CrawlResultComparison: React.FC<CrawlResultComparisonProps> = ({ siteId })
   const leftRows = useMemo(() => flattenExtractedData(leftData), [leftData]);
   const rightRows = useMemo(() => flattenExtractedData(rightData), [rightData]);
   const comparisonRows = useMemo(() => buildComparisonRows(leftRows, rightRows), [leftRows, rightRows]);
+
+  // Source comparison handler (HTML vs OCR for same crawl)
+  const handleSourceCompare = useCallback(async () => {
+    if (sourceCompareId === '') return;
+    setSourceComparing(true);
+    setSourceCompareError(null);
+    setSourceComparison(null);
+    try {
+      const data = await fetchExtractedDataComparison(sourceCompareId);
+      if (!data.html_data && !data.ocr_data) {
+        setSourceCompareError('このクロール結果にはHTML・OCRどちらの抽出データもありません。');
+      } else if (!data.ocr_data) {
+        setSourceCompareError('OCR抽出データがありません。スクリーンショットが取得されていない可能性があります。');
+      }
+      setSourceComparison(data);
+    } catch (err: unknown) {
+      setSourceCompareError(err instanceof Error ? err.message : 'データの取得に失敗しました');
+    } finally {
+      setSourceComparing(false);
+    }
+  }, [sourceCompareId]);
+
+  // Source comparison derived rows
+  const sourceLeftRows = useMemo(() => flattenExtractedData(sourceComparison?.html_data ?? null), [sourceComparison]);
+  const sourceRightRows = useMemo(() => flattenExtractedData(sourceComparison?.ocr_data ?? null), [sourceComparison]);
+  const sourceComparisonRows = useMemo(() => buildComparisonRows(sourceLeftRows, sourceRightRows), [sourceLeftRows, sourceRightRows]);
+  const sourceSections = useMemo(() => {
+    const map = new Map<string, ComparisonRow[]>();
+    for (const row of sourceComparisonRows) {
+      const list = map.get(row.section) ?? [];
+      list.push(row);
+      map.set(row.section, list);
+    }
+    return map;
+  }, [sourceComparisonRows]);
 
   // Group rows by section
   const sections = useMemo(() => {
@@ -283,40 +338,54 @@ const CrawlResultComparison: React.FC<CrawlResultComparisonProps> = ({ siteId })
 
   return (
     <div className="comparison">
-      {/* Header with selectors */}
+      {/* Mode toggle */}
       <div className="comparison__header">
         <h2>クロール結果比較</h2>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <button
+            type="button"
+            className={`comparison__compare-btn ${compareMode === 'crawl' ? '' : 'comparison__compare-btn--secondary'}`}
+            onClick={() => setCompareMode('crawl')}
+            style={compareMode === 'crawl' ? {} : { backgroundColor: '#e5e7eb', color: '#374151' }}
+          >
+            クロール間比較
+          </button>
+          <button
+            type="button"
+            className={`comparison__compare-btn ${compareMode === 'source' ? '' : 'comparison__compare-btn--secondary'}`}
+            onClick={() => setCompareMode('source')}
+            style={compareMode === 'source' ? {} : { backgroundColor: '#e5e7eb', color: '#374151' }}
+          >
+            HTML vs OCR比較
+          </button>
+        </div>
+
+        {compareMode === 'crawl' && (
         <div className="comparison__selectors">
           <div className="comparison__selector-group">
-            <label htmlFor="comparison-left">比較元（古い方）</label>
-            <select
-              id="comparison-left"
-              value={leftId}
-              onChange={(e) => setLeftId(e.target.value ? Number(e.target.value) : '')}
-            >
-              <option value="">選択してください</option>
-              {crawlResults.map((cr) => (
-                <option key={cr.id} value={cr.id}>
-                  {formatCrawlLabel(cr)}
-                </option>
-              ))}
-            </select>
+            <Select
+              label="比較元（古い方）"
+              value={leftId === '' ? '' : String(leftId)}
+              onChange={(val) => setLeftId(val ? Number(val) : '')}
+              options={[
+                { value: '', label: '選択してください' },
+                ...crawlResults.map((cr) => ({ value: String(cr.id), label: formatCrawlLabel(cr) })),
+              ]}
+              aria-label="比較元クロール結果"
+            />
           </div>
 
           <div className="comparison__selector-group">
-            <label htmlFor="comparison-right">比較先（新しい方）</label>
-            <select
-              id="comparison-right"
-              value={rightId}
-              onChange={(e) => setRightId(e.target.value ? Number(e.target.value) : '')}
-            >
-              <option value="">選択してください</option>
-              {crawlResults.map((cr) => (
-                <option key={cr.id} value={cr.id}>
-                  {formatCrawlLabel(cr)}
-                </option>
-              ))}
-            </select>
+            <Select
+              label="比較先（新しい方）"
+              value={rightId === '' ? '' : String(rightId)}
+              onChange={(val) => setRightId(val ? Number(val) : '')}
+              options={[
+                { value: '', label: '選択してください' },
+                ...crawlResults.map((cr) => ({ value: String(cr.id), label: formatCrawlLabel(cr) })),
+              ]}
+              aria-label="比較先クロール結果"
+            />
           </div>
 
           <button
@@ -328,14 +397,40 @@ const CrawlResultComparison: React.FC<CrawlResultComparisonProps> = ({ siteId })
             {comparing ? '比較中...' : '比較する'}
           </button>
         </div>
+        )}
+
+        {compareMode === 'source' && (
+        <div className="comparison__selectors">
+          <div className="comparison__selector-group">
+            <Select
+              label="クロール結果を選択"
+              value={sourceCompareId === '' ? '' : String(sourceCompareId)}
+              onChange={(val) => setSourceCompareId(val ? Number(val) : '')}
+              options={[
+                { value: '', label: '選択してください' },
+                ...crawlResults.map((cr) => ({ value: String(cr.id), label: formatCrawlLabel(cr) })),
+              ]}
+              aria-label="HTML vs OCR比較対象"
+            />
+          </div>
+          <button
+            type="button"
+            className="comparison__compare-btn"
+            disabled={sourceCompareId === '' || sourceComparing}
+            onClick={handleSourceCompare}
+          >
+            {sourceComparing ? '比較中...' : 'HTML vs OCR比較'}
+          </button>
+        </div>
+        )}
       </div>
 
       {compareError && (
         <div className="comparison__empty" role="alert">エラー: {compareError}</div>
       )}
 
-      {/* Comparison results */}
-      {leftData && rightData && (
+      {/* Crawl-to-crawl comparison results */}
+      {compareMode === 'crawl' && (leftData || rightData) && (
         <>
           {/* Screenshots side by side */}
           <div className="comparison__screenshots">
@@ -397,6 +492,57 @@ const CrawlResultComparison: React.FC<CrawlResultComparisonProps> = ({ siteId })
           ))}
 
           {comparisonRows.length === 0 && (
+            <div className="comparison__empty">比較可能なデータがありません。</div>
+          )}
+        </>
+      )}
+
+      {/* HTML vs OCR comparison results */}
+      {compareMode === 'source' && sourceCompareError && (
+        <div className="comparison__empty" role="alert">エラー: {sourceCompareError}</div>
+      )}
+
+      {compareMode === 'source' && sourceComparison && (sourceComparison.html_data || sourceComparison.ocr_data) && (
+        <>
+          {Array.from(sourceSections.entries()).map(([sectionName, rows]) => (
+            <div key={sectionName} className="comparison__data">
+              <h3>{sectionName}</h3>
+              <table className="comparison__table">
+                <thead>
+                  <tr>
+                    <th>項目</th>
+                    <th>HTML解析</th>
+                    <th>OCR解析</th>
+                    <th>差分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr
+                      key={row.key}
+                      className={row.changed ? 'comparison__row--changed' : ''}
+                    >
+                      <td>{row.label}</td>
+                      <td>{row.leftValue}</td>
+                      <td>{row.rightValue}</td>
+                      <td>
+                        {row.diff && (
+                          <span className={`comparison__diff comparison__diff--${row.diffDirection}`}>
+                            {row.diff}
+                          </span>
+                        )}
+                        {!row.diff && row.changed && (
+                          <span className="comparison__diff comparison__diff--positive">差異あり</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+          {sourceComparisonRows.length === 0 && (
             <div className="comparison__empty">比較可能なデータがありません。</div>
           )}
         </>

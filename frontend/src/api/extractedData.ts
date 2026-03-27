@@ -126,3 +126,52 @@ export const fetchAuditLogs = async (
     return [];
   }
 };
+
+
+import type { ExtractedDataComparison } from '../types/extractedData';
+
+/**
+ * Fetch both HTML and OCR extracted data for a crawl result (side-by-side comparison).
+ *
+ * GET /api/crawl/extracted/{crawlResultId}/compare
+ */
+export const fetchExtractedDataComparison = async (
+  crawlResultId: number,
+): Promise<ExtractedDataComparison> => {
+  const response = await api.get<ExtractedDataComparison>(
+    `/api/crawl/extracted/${crawlResultId}/compare`,
+  );
+  return response.data;
+};
+
+import type { VisualConfirmationData, ManualExtractionInput } from '../types/extractedData';
+
+/**
+ * Fetch visual confirmation data for a crawl result.
+ *
+ * GET /api/crawl/extracted/{crawlResultId}/visual-confirmation
+ */
+export const fetchVisualConfirmationData = async (
+  crawlResultId: number,
+): Promise<VisualConfirmationData> => {
+  const response = await api.get<VisualConfirmationData>(
+    `/api/crawl/extracted/${crawlResultId}/visual-confirmation`,
+  );
+  return response.data;
+};
+
+/**
+ * Save manually entered extraction data after visual confirmation.
+ *
+ * POST /api/crawl/extracted/{crawlResultId}/manual-input
+ */
+export const saveManualExtraction = async (
+  crawlResultId: number,
+  data: ManualExtractionInput,
+): Promise<ExtractedPaymentInfo> => {
+  const response = await api.post<ExtractedPaymentInfo>(
+    `/api/crawl/extracted/${crawlResultId}/manual-input`,
+    data,
+  );
+  return response.data;
+};

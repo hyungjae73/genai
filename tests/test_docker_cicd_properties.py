@@ -147,6 +147,116 @@ class TestDockerfileSecurityCompliance:
 
 
 # ---------------------------------------------------------------------------
+# Property 4: シークレット情報の非ハードコード
+# .env.staging, .env.productionのシークレット変数がプレースホルダーであること、
+# .dockerignoreが.envファイルを除外することを検証
+# Validates: Requirements 3.2, 9.2
+# ---------------------------------------------------------------------------
+
+# Secret variables that must use CHANGE_ME_IN_SECRETS placeholder in staging/production
+SECRET_VARIABLES = [
+    "POSTGRES_PASSWORD",
+    "SECRET_KEY",
+    "ENCRYPTION_KEY",
+    "JWT_SECRET_KEY",
+    "SENDGRID_API_KEY",
+    "SLACK_BOT_TOKEN",
+    "SLACK_WEBHOOK_URL",
+]
+
+PLACEHOLDER = "CHANGE_ME_IN_SECRETS"
+
+# Environment files that must use placeholders for secrets
+SECRET_ENV_FILES = [
+    ".env.staging",
+    ".env.production",
+]
+
+DOCKERIGNORE_PATH = PROJECT_ROOT / ".dockerignore"
+
+
+def _parse_env_file(path: Path) -> dict:
+    """Parse a .env file and return a dict of key=value pairs (ignoring comments)."""
+    result = {}
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" in stripped:
+            key, _, value = stripped.partition("=")
+            result[key.strip()] = value.strip()
+    return result
+
+
+class TestSecretNonHardcoding:
+    """Property 4: Secret variables must not be hardcoded in staging/production env files."""
+
+    @given(
+        secret_var=st.sampled_from(SECRET_VARIABLES),
+        env_file=st.sampled_from(SECRET_ENV_FILES),
+    )
+    @settings(max_examples=100)
+    def test_secret_uses_placeholder(self, secret_var: str, env_file: str):
+        """
+        **Validates: Requirements 3.2, 9.2**
+
+        For any secret variable in any staging/production env file,
+        the value must be the CHANGE_ME_IN_SECRETS placeholder.
+        """
+        env_path = PROJECT_ROOT / env_file
+        assume(env_path.exists())
+
+        env_vars = _parse_env_file(env_path)
+        assume(secret_var in env_vars)
+
+        value = env_vars[secret_var]
+        assert value == PLACEHOLDER, (
+            f"Secret variable '{secret_var}' in '{env_file}' has value '{value}' "
+            f"instead of placeholder '{PLACEHOLDER}'. "
+            f"Secrets must not be hardcoded (Requirements 3.2, 9.2)."
+        )
+
+    def test_all_secrets_use_placeholder_in_staging(self):
+        """Deterministic check: all secrets in .env.staging use placeholder."""
+        env_path = PROJECT_ROOT / ".env.staging"
+        assert env_path.exists(), ".env.staging must exist"
+        env_vars = _parse_env_file(env_path)
+        for var in SECRET_VARIABLES:
+            assert var in env_vars, f"Secret variable '{var}' missing from .env.staging"
+            assert env_vars[var] == PLACEHOLDER, (
+                f"Secret '{var}' in .env.staging has value '{env_vars[var]}' "
+                f"instead of '{PLACEHOLDER}'"
+            )
+
+    def test_all_secrets_use_placeholder_in_production(self):
+        """Deterministic check: all secrets in .env.production use placeholder."""
+        env_path = PROJECT_ROOT / ".env.production"
+        assert env_path.exists(), ".env.production must exist"
+        env_vars = _parse_env_file(env_path)
+        for var in SECRET_VARIABLES:
+            assert var in env_vars, f"Secret variable '{var}' missing from .env.production"
+            assert env_vars[var] == PLACEHOLDER, (
+                f"Secret '{var}' in .env.production has value '{env_vars[var]}' "
+                f"instead of '{PLACEHOLDER}'"
+            )
+
+    def test_dockerignore_excludes_env_files(self):
+        """Verify .dockerignore contains a pattern that excludes .env files."""
+        assert DOCKERIGNORE_PATH.exists(), ".dockerignore must exist"
+        content = DOCKERIGNORE_PATH.read_text()
+        lines = [line.strip() for line in content.splitlines() if line.strip() and not line.strip().startswith("#")]
+        # Check for .env* or .env pattern
+        has_env_exclusion = any(
+            line in (".env*", ".env", ".env.*") for line in lines
+        )
+        assert has_env_exclusion, (
+            f".dockerignore must contain a pattern to exclude .env files "
+            f"(e.g., '.env*'). Found lines: {lines}"
+        )
+
+
+
+# ---------------------------------------------------------------------------
 # Entrypoint script simulation helpers
 # ---------------------------------------------------------------------------
 
@@ -508,3 +618,293 @@ class TestAllServicesHealthcheck:
         assert not missing_healthcheck, (
             f"Services missing healthcheck configuration: {missing_healthcheck}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Property 9: ヘルスチェックレスポンスの完全性
+# DB/Redisの全状態組み合わせに対し、レスポンスに(a)全体ステータス、(b)DB接続状態、
+# (c)Redis接続状態、(d)バージョン情報が含まれ、異常時はunhealthy+503を返すことを検証
+# Validates: Requirements 8.1, 8.4
+# ---------------------------------------------------------------------------
+
+
+def _simulate_health_check(db_healthy: bool, redis_healthy: bool, version: str = "dev"):
+    """
+    Simulate the /health endpoint logic without actual DB/Redis connections.
+
+    Returns (response_body: dict, status_code: int).
+    """
+    from datetime import datetime, timezone
+
+    health = {
+        "status": "healthy",
+        "version": version,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "database": "unknown",
+            "redis": "unknown",
+        },
+    }
+
+    # Simulate DB check
+    if db_healthy:
+        health["services"]["database"] = "healthy"
+    else:
+        health["status"] = "unhealthy"
+        health["services"]["database"] = {
+            "status": "unhealthy: connection refused",
+            "error_code": "PCM-E201",
+        }
+
+    # Simulate Redis check
+    if redis_healthy:
+        health["services"]["redis"] = "healthy"
+    else:
+        health["status"] = "unhealthy"
+        health["services"]["redis"] = {
+            "status": "unhealthy: connection refused",
+            "error_code": "PCM-E301",
+        }
+
+    status_code = 200 if health["status"] == "healthy" else 503
+    return health, status_code
+
+
+class TestHealthCheckResponseCompleteness:
+    """Property 9: Health check response must be complete and accurate."""
+
+    @given(
+        db_healthy=st.booleans(),
+        redis_healthy=st.booleans(),
+        version=st.text(
+            alphabet=st.characters(whitelist_categories=("L", "N", "P")),
+            min_size=1,
+            max_size=40,
+        ),
+    )
+    @settings(max_examples=100)
+    def test_health_response_contains_all_required_fields(
+        self, db_healthy: bool, redis_healthy: bool, version: str
+    ):
+        """
+        **Validates: Requirements 8.1, 8.4**
+
+        For any combination of DB/Redis health states and version string,
+        the health check response must contain: status, version, timestamp,
+        and services (with database and redis sub-fields).
+        """
+        body, status_code = _simulate_health_check(db_healthy, redis_healthy, version)
+
+        # (a) Overall status field exists
+        assert "status" in body, "Health response must contain 'status' field"
+        assert body["status"] in ("healthy", "unhealthy"), (
+            f"Status must be 'healthy' or 'unhealthy', got '{body['status']}'"
+        )
+
+        # (b) Database connection state
+        assert "services" in body, "Health response must contain 'services' field"
+        assert "database" in body["services"], (
+            "Health response services must contain 'database' field"
+        )
+
+        # (c) Redis connection state
+        assert "redis" in body["services"], (
+            "Health response services must contain 'redis' field"
+        )
+
+        # (d) Version information
+        assert "version" in body, "Health response must contain 'version' field"
+        assert body["version"] == version, (
+            f"Version should be '{version}', got '{body['version']}'"
+        )
+
+        # Timestamp field
+        assert "timestamp" in body, "Health response must contain 'timestamp' field"
+
+    @given(
+        db_healthy=st.booleans(),
+        redis_healthy=st.booleans(),
+    )
+    @settings(max_examples=100)
+    def test_unhealthy_service_returns_503(
+        self, db_healthy: bool, redis_healthy: bool
+    ):
+        """
+        **Validates: Requirements 8.1, 8.4**
+
+        If any service is unhealthy, overall status must be 'unhealthy'
+        and HTTP status code must be 503. If all healthy, status is 'healthy'
+        and code is 200.
+        """
+        body, status_code = _simulate_health_check(db_healthy, redis_healthy)
+
+        all_healthy = db_healthy and redis_healthy
+
+        if all_healthy:
+            assert body["status"] == "healthy", (
+                "When all services are healthy, overall status must be 'healthy'"
+            )
+            assert status_code == 200, (
+                f"When all services are healthy, status code must be 200, got {status_code}"
+            )
+        else:
+            assert body["status"] == "unhealthy", (
+                f"When any service is unhealthy (db={db_healthy}, redis={redis_healthy}), "
+                f"overall status must be 'unhealthy', got '{body['status']}'"
+            )
+            assert status_code == 503, (
+                f"When any service is unhealthy, status code must be 503, got {status_code}"
+            )
+
+    @given(
+        db_healthy=st.booleans(),
+        redis_healthy=st.booleans(),
+    )
+    @settings(max_examples=100)
+    def test_individual_service_status_matches_input(
+        self, db_healthy: bool, redis_healthy: bool
+    ):
+        """
+        **Validates: Requirements 8.1, 8.4**
+
+        Each individual service status must correctly reflect its health state.
+        """
+        body, _ = _simulate_health_check(db_healthy, redis_healthy)
+
+        if db_healthy:
+            assert body["services"]["database"] == "healthy", (
+                "DB is healthy but service status is not 'healthy'"
+            )
+        else:
+            db_svc = body["services"]["database"]
+            assert isinstance(db_svc, dict) and "error_code" in db_svc, (
+                f"DB is unhealthy but service status missing error_code: {db_svc}"
+            )
+            assert db_svc["error_code"] == "PCM-E201", (
+                f"DB unhealthy error_code should be PCM-E201, got '{db_svc['error_code']}'"
+            )
+
+        if redis_healthy:
+            assert body["services"]["redis"] == "healthy", (
+                "Redis is healthy but service status is not 'healthy'"
+            )
+        else:
+            redis_svc = body["services"]["redis"]
+            assert isinstance(redis_svc, dict) and "error_code" in redis_svc, (
+                f"Redis is unhealthy but service status missing error_code: {redis_svc}"
+            )
+            assert redis_svc["error_code"] == "PCM-E301", (
+                f"Redis unhealthy error_code should be PCM-E301, got '{redis_svc['error_code']}'"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Property 8: イメージタグの一貫性
+# ランダムなコミットハッシュに対し、deploy.ymlのmetadata-action設定が
+# sha/latestタグを生成することを検証
+# Validates: Requirements 4.4, 7.2
+# ---------------------------------------------------------------------------
+
+DEPLOY_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "deploy.yml"
+
+
+def _parse_metadata_action_tags(workflow: dict, step_id: str) -> list:
+    """
+    Extract the tag type lines from a docker/metadata-action step
+    identified by its 'id' field in the deploy workflow.
+
+    Returns a list of tag type strings, e.g. ['sha', 'raw', 'raw', 'semver'].
+    """
+    for job_name, job_config in workflow.get("jobs", {}).items():
+        for step in job_config.get("steps", []):
+            if step.get("id") == step_id:
+                tags_raw = step.get("with", {}).get("tags", "")
+                tag_types = []
+                for line in tags_raw.strip().splitlines():
+                    line = line.strip()
+                    if line.startswith("type="):
+                        # Extract the type value (e.g. "type=sha" -> "sha")
+                        tag_type = line.split(",")[0].replace("type=", "")
+                        tag_types.append(tag_type)
+                return tag_types
+    return []
+
+
+def _load_deploy_workflow() -> dict:
+    """Load and parse deploy.yml."""
+    content = DEPLOY_WORKFLOW_PATH.read_text()
+    return yaml.safe_load(content)
+
+
+class TestImageTagConsistency:
+    """Property 8: Every CI build must produce sha-based and latest tags."""
+
+    @given(
+        commit_hash=st.text(
+            alphabet="0123456789abcdef",
+            min_size=7,
+            max_size=40,
+        )
+    )
+    @settings(max_examples=100)
+    def test_metadata_action_generates_sha_and_latest_tags(self, commit_hash: str):
+        """
+        **Validates: Requirements 4.4, 7.2**
+
+        For any random commit hash, the deploy.yml metadata-action configuration
+        must include both 'sha' and 'raw' (latest) tag types, ensuring every
+        build produces a commit-hash-based tag and a latest tag.
+        """
+        workflow = _load_deploy_workflow()
+
+        # Check both API and frontend metadata steps
+        for step_id in ("meta-api", "meta-frontend"):
+            tag_types = _parse_metadata_action_tags(workflow, step_id)
+
+            assert "sha" in tag_types, (
+                f"metadata-action step '{step_id}' must include 'type=sha' tag "
+                f"to generate commit-hash-based tags for commit {commit_hash}. "
+                f"Found tag types: {tag_types}"
+            )
+
+            # 'raw' with value=latest provides the latest tag
+            assert "raw" in tag_types, (
+                f"metadata-action step '{step_id}' must include 'type=raw' tag "
+                f"(for latest/stable) for commit {commit_hash}. "
+                f"Found tag types: {tag_types}"
+            )
+
+    def test_deploy_workflow_has_metadata_steps(self):
+        """Verify deploy.yml contains metadata-action steps for both images."""
+        workflow = _load_deploy_workflow()
+
+        api_tags = _parse_metadata_action_tags(workflow, "meta-api")
+        assert len(api_tags) > 0, (
+            "deploy.yml must have a docker/metadata-action step with id 'meta-api'"
+        )
+
+        frontend_tags = _parse_metadata_action_tags(workflow, "meta-frontend")
+        assert len(frontend_tags) > 0, (
+            "deploy.yml must have a docker/metadata-action step with id 'meta-frontend'"
+        )
+
+    def test_tag_strategy_includes_stable_and_semver(self):
+        """Verify the tag strategy includes stable (main) and semver (v* tags)."""
+        workflow = _load_deploy_workflow()
+
+        for step_id in ("meta-api", "meta-frontend"):
+            tags_raw = ""
+            for job_name, job_config in workflow.get("jobs", {}).items():
+                for step in job_config.get("steps", []):
+                    if step.get("id") == step_id:
+                        tags_raw = step.get("with", {}).get("tags", "")
+                        break
+
+            assert "stable" in tags_raw, (
+                f"metadata-action step '{step_id}' must include a 'stable' tag "
+                f"for main branch builds"
+            )
+            assert "semver" in tags_raw, (
+                f"metadata-action step '{step_id}' must include a 'semver' tag "
+                f"for version tag builds"
+            )

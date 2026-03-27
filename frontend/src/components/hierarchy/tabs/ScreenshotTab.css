@@ -1,0 +1,97 @@
+/* ScreenshotTab — section layout */
+
+.screenshot-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.screenshot-section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--color-bg-surface);
+}
+
+.screenshot-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.screenshot-section-header h3 {
+  margin: 0;
+  font-size: var(--font-md);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.screenshot-section-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Upload form inside modals */
+.screenshot-tab .upload-form {
+  padding: var(--space-4) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.screenshot-tab .upload-notice {
+  color: var(--color-text-secondary);
+  font-size: var(--font-sm);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--color-bg-surface-hover);
+  border-radius: var(--radius-sm);
+}
+
+.screenshot-tab .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.screenshot-tab .form-group label {
+  font-weight: 600;
+  font-size: var(--font-base);
+  color: var(--color-text-primary);
+}
+
+.screenshot-tab .form-group select,
+.screenshot-tab .form-group input[type="file"] {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-base);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.screenshot-tab .file-info {
+  margin-top: var(--space-2);
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+}
+
+.screenshot-tab .form-error {
+  color: var(--color-danger-text);
+  background-color: var(--color-danger-subtle);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+}
+
+.screenshot-tab .pdf-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-lg);
+}

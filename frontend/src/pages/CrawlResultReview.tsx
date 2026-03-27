@@ -1,19 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { fetchExtractedData, updateExtractedData } from '../api/extractedData';
+import { fetchExtractedData, updateExtractedData, fetchVisualConfirmationData } from '../api/extractedData';
 import type {
   ExtractedPaymentInfo,
   ExtractedPaymentInfoUpdate,
   PriceInfo,
   PaymentMethod,
   Fee,
+  VisualConfirmationData,
 } from '../types/extractedData';
 import ConfidenceIndicator, { sortByConfidenceAsc } from '../components/ConfidenceIndicator';
 import EditableField from '../components/EditableField';
 import type { FieldType } from '../components/EditableField';
 import ChangeHistoryPanel from '../components/ChangeHistoryPanel';
 import ApprovalWorkflow from '../components/ApprovalWorkflow';
+import VisualConfirmationPanel from '../components/VisualConfirmationPanel';
+import { HelpButton } from '../components/ui/HelpButton/HelpButton';
 import './CrawlResultReview.css';
 
 const API_BASE_URL =
@@ -265,6 +268,7 @@ const CrawlResultReviewPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [manuallyEditedFields, setManuallyEditedFields] = useState<Set<string>>(new Set());
+  const [visualConfirmation, setVisualConfirmation] = useState<VisualConfirmationData | null>(null);
 
   useEffect(() => {
     if (!crawlResultId) return;
@@ -274,8 +278,29 @@ const CrawlResultReviewPage: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const result = await fetchExtractedData(Number(crawlResultId));
-        if (!cancelled) setData(result);
+
+        // Fetch extracted data and visual confirmation data in parallel
+        const [extractedResult, vcResult] = await Promise.allSettled([
+          fetchExtractedData(Number(crawlResultId)),
+          fetchVisualConfirmationData(Number(crawlResultId)),
+        ]);
+
+        if (!cancelled) {
+          if (extractedResult.status === 'fulfilled') {
+            setData(extractedResult.value);
+          }
+          if (vcResult.status === 'fulfilled') {
+            setVisualConfirmation(vcResult.value);
+          }
+          // If both fail, show error
+          if (extractedResult.status === 'rejected' && vcResult.status === 'rejected') {
+            const message =
+              extractedResult.reason instanceof Error
+                ? extractedResult.reason.message
+                : 'データの取得に失敗しました';
+            setError(message);
+          }
+        }
       } catch (err: unknown) {
         if (!cancelled) {
           const message =
@@ -354,6 +379,17 @@ const CrawlResultReviewPage: React.FC = () => {
     [],
   );
 
+  /** Refresh visual confirmation data after manual save */
+  const handleVisualConfirmationSaved = useCallback(() => {
+    if (!crawlResultId) return;
+    fetchVisualConfirmationData(Number(crawlResultId)).then((vc) => {
+      setVisualConfirmation(vc);
+    }).catch(() => { /* ignore refresh errors */ });
+    fetchExtractedData(Number(crawlResultId)).then((d) => {
+      setData(d);
+    }).catch(() => { /* ignore refresh errors */ });
+  }, [crawlResultId]);
+
   /* ---- Loading / Error states ---- */
 
   if (loading) {
@@ -378,6 +414,46 @@ const CrawlResultReviewPage: React.FC = () => {
   }
 
   if (!data) {
+    // No extracted data — show visual confirmation panel if available
+    if (visualConfirmation && visualConfirmation.extraction_status !== 'complete') {
+      return (
+        <div className="crawl-review">
+          <div className="crawl-review__header">
+            <div className="crawl-review__header-left">
+              <h1>クロール結果レビュー <HelpButton title="クロール結果レビューの使い方">
+                <div className="help-content">
+                  <h3>ユーザーストーリー</h3>
+                  <p>クロールで取得したデータを確認・編集し、抽出精度を検証したい</p>
+
+                  <h3>スクリーンショットとデータの並列表示</h3>
+                  <p>画面左側にスクリーンショット、右側に抽出データが並列表示されます。ズーム・パン操作でスクリーンショットの詳細を確認できます。</p>
+
+                  <h3>フィールドハイライト</h3>
+                  <p>右側のデータフィールドをクリックすると、スクリーンショット上の該当箇所がハイライト表示されます。もう一度クリックするとハイライトが解除されます。</p>
+
+                  <h3>承認ワークフロー</h3>
+                  <p>抽出データの確認後、承認または却下の操作が可能です。データの手動編集も行えます。</p>
+
+                  <h3>HTML解析とOCR解析の比較</h3>
+                  <p>HTML解析とOCR解析の結果を比較し、抽出精度を検証できます。信頼度スコアが低いフィールドは優先的に確認してください。</p>
+                </div>
+              </HelpButton></h1>
+            </div>
+          </div>
+          <div className="crawl-review__body">
+            <div className="crawl-review__visual-confirmation-full">
+              <VisualConfirmationPanel
+                crawlResultId={Number(crawlResultId)}
+                screenshotUrl={visualConfirmation.screenshot_url}
+                rawHtml={visualConfirmation.raw_html}
+                extractionStatus={visualConfirmation.extraction_status}
+                onSaved={handleVisualConfirmationSaved}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="crawl-review">
         <p>データが見つかりません。</p>
@@ -419,7 +495,24 @@ const CrawlResultReviewPage: React.FC = () => {
       {/* Header bar */}
       <div className="crawl-review__header">
         <div className="crawl-review__header-left">
-          <h1>クロール結果レビュー</h1>
+          <h1>クロール結果レビュー <HelpButton title="クロール結果レビューの使い方">
+            <div className="help-content">
+              <h3>ユーザーストーリー</h3>
+              <p>クロールで取得したデータを確認・編集し、抽出精度を検証したい</p>
+
+              <h3>スクリーンショットとデータの並列表示</h3>
+              <p>画面左側にスクリーンショット、右側に抽出データが並列表示されます。ズーム・パン操作でスクリーンショットの詳細を確認できます。</p>
+
+              <h3>フィールドハイライト</h3>
+              <p>右側のデータフィールドをクリックすると、スクリーンショット上の該当箇所がハイライト表示されます。もう一度クリックするとハイライトが解除されます。</p>
+
+              <h3>承認ワークフロー</h3>
+              <p>抽出データの確認後、承認または却下の操作が可能です。データの手動編集も行えます。</p>
+
+              <h3>HTML解析とOCR解析の比較</h3>
+              <p>HTML解析とOCR解析の結果を比較し、抽出精度を検証できます。信頼度スコアが低いフィールドは優先的に確認してください。</p>
+            </div>
+          </HelpButton></h1>
           <span className="crawl-review__meta">
             クロール日時: {crawlTimestamp}
           </span>
@@ -626,6 +719,20 @@ const CrawlResultReviewPage: React.FC = () => {
 
           {/* Change history */}
           <ChangeHistoryPanel entityId={data.id} />
+
+          {/* Visual confirmation panel for partial/no_data extraction */}
+          {visualConfirmation &&
+            visualConfirmation.extraction_status !== 'complete' && (
+              <section className="data-section">
+                <VisualConfirmationPanel
+                  crawlResultId={Number(crawlResultId)}
+                  screenshotUrl={visualConfirmation.screenshot_url}
+                  rawHtml={visualConfirmation.raw_html}
+                  extractionStatus={visualConfirmation.extraction_status}
+                  onSaved={handleVisualConfirmationSaved}
+                />
+              </section>
+            )}
         </div>
       </div>
     </div>

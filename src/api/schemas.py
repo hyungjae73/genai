@@ -4,7 +4,7 @@ Pydantic schemas for API request/response models.
 
 from datetime import datetime
 from typing import Optional, Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # Monitoring Site schemas
@@ -26,6 +26,9 @@ class MonitoringSiteUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     url: Optional[str] = Field(None, min_length=1)
     monitoring_enabled: Optional[bool] = None
+    pre_capture_script: Optional[Any] = None
+    crawl_priority: Optional[str] = None
+    plugin_config: Optional[Any] = None
 
 
 class MonitoringSiteResponse(BaseModel):
@@ -39,8 +42,7 @@ class MonitoringSiteResponse(BaseModel):
     compliance_status: str = "pending"
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Customer schemas
@@ -75,8 +77,7 @@ class CustomerResponse(CustomerBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Contract Condition schemas
@@ -109,8 +110,7 @@ class ContractConditionResponse(ContractConditionBase):
     is_current: bool
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Alert schemas
@@ -127,9 +127,16 @@ class AlertResponse(BaseModel):
     old_price: Optional[float] = None
     new_price: Optional[float] = None
     change_percentage: Optional[float] = None
+    site_name: Optional[str] = None
+    violation_type: Optional[str] = None
+    is_resolved: bool
+    site_id: Optional[int] = None
+    fake_domain: Optional[str] = None
+    legitimate_domain: Optional[str] = None
+    domain_similarity_score: Optional[float] = None
+    content_similarity_score: Optional[float] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Monitoring History schemas
@@ -152,8 +159,7 @@ class CrawlResultResponse(BaseModel):
     screenshot_path: Optional[str] = None
     crawled_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlJobResponse(BaseModel):
@@ -180,8 +186,7 @@ class ViolationResponse(BaseModel):
     actual_value: Any
     detected_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Statistics schemas
@@ -193,6 +198,8 @@ class MonitoringStatistics(BaseModel):
     high_severity_violations: int
     success_rate: float
     last_crawl: Optional[datetime]
+    fake_site_alerts: int = 0
+    unresolved_fake_site_alerts: int = 0
 
 
 # Error response schema
@@ -213,8 +220,7 @@ class ScreenshotResponse(BaseModel):
     file_format: str  # 'png' or 'pdf'
     crawled_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScreenshotUpload(BaseModel):
@@ -248,8 +254,7 @@ class CategoryResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 
@@ -289,8 +294,7 @@ class FieldSchemaResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FieldSuggestionResponse(BaseModel):
@@ -312,8 +316,7 @@ class ExtractedDataResponse(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ExtractedDataUpdate(BaseModel):
@@ -331,6 +334,7 @@ class ExtractedPaymentInfoResponse(BaseModel):
     id: int
     crawl_result_id: int
     site_id: int
+    source: str = "html"
     product_info: Optional[dict[str, Any]] = None
     price_info: Optional[Any] = None
     payment_methods: Optional[Any] = None
@@ -342,8 +346,7 @@ class ExtractedPaymentInfoResponse(BaseModel):
     language: Optional[str] = None
     extracted_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ExtractedPaymentInfoUpdate(BaseModel):
@@ -380,8 +383,7 @@ class PriceHistoryResponse(BaseModel):
     price_change_percentage: Optional[float] = None
     recorded_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PriceHistoryListResponse(BaseModel):
@@ -399,3 +401,52 @@ class StorageUsageResponse(BaseModel):
     total_files: int
     total_size_bytes: int
     total_size_mb: float
+
+
+# ------------------------------------------------------------------
+# Manual Extraction Input schema
+# ------------------------------------------------------------------
+
+class ManualExtractionInput(BaseModel):
+    """Schema for manual extraction input from visual confirmation."""
+    product_name: Optional[str] = None
+    price: Optional[str] = None
+    currency: Optional[str] = None
+    payment_methods: Optional[list[str]] = None
+    additional_fees: Optional[str] = None
+
+
+# ------------------------------------------------------------------
+# Scraping Task schemas (engineering_standards.md compliant)
+# ------------------------------------------------------------------
+
+from src.models import ScrapingTaskStatus
+
+
+class CreateScrapingTaskRequest(BaseModel):
+    """
+    Request schema for creating a scraping task.
+
+    Boundary defense: target_url is validated as HTTPS/HTTP with length limits.
+    Pydantic rejects invalid data at the API boundary — no ValueError deeper in.
+    """
+    target_url: str = Field(
+        ...,
+        min_length=10,
+        max_length=2048,
+        pattern=r"^https?://",
+        description="Target URL to scrape (must be http:// or https://)",
+    )
+
+
+class ScrapingTaskResponse(BaseModel):
+    """Response schema for a scraping task."""
+    id: int
+    target_url: str
+    status: ScrapingTaskStatus
+    result_minio_key: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

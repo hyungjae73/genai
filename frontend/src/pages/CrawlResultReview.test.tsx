@@ -25,6 +25,7 @@ vi.mock('../api/extractedData', () => ({
   approveExtractedData: vi.fn(),
   rejectExtractedData: vi.fn(),
   fetchAuditLogs: vi.fn(),
+  fetchVisualConfirmationData: vi.fn(),
 }));
 
 // Mock react-zoom-pan-pinch to avoid canvas/DOM measurement issues in jsdom
@@ -40,6 +41,7 @@ import {
   approveExtractedData,
   rejectExtractedData,
   fetchAuditLogs,
+  fetchVisualConfirmationData,
 } from '../api/extractedData';
 
 const mockFetchExtractedData = vi.mocked(fetchExtractedData);
@@ -47,6 +49,7 @@ const mockUpdateExtractedData = vi.mocked(updateExtractedData);
 const mockApproveExtractedData = vi.mocked(approveExtractedData);
 const mockRejectExtractedData = vi.mocked(rejectExtractedData);
 const mockFetchAuditLogs = vi.mocked(fetchAuditLogs);
+const mockFetchVisualConfirmationData = vi.mocked(fetchVisualConfirmationData);
 
 /* ------------------------------------------------------------------ */
 /*  Test data                                                          */
@@ -112,6 +115,14 @@ describe('CrawlResultReview Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetchAuditLogs.mockResolvedValue([]);
+    // Default: visual confirmation returns "complete" so it doesn't interfere with existing tests
+    mockFetchVisualConfirmationData.mockResolvedValue({
+      screenshot_url: null,
+      raw_html: null,
+      extraction_status: 'complete',
+      html_data: null,
+      ocr_data: null,
+    });
   });
 
   // ================================================================
@@ -126,6 +137,7 @@ describe('CrawlResultReview Integration', () => {
 
     it('shows error message when data fetch fails', async () => {
       mockFetchExtractedData.mockRejectedValueOnce(new Error('サーバーエラー'));
+      mockFetchVisualConfirmationData.mockRejectedValueOnce(new Error('サーバーエラー'));
       renderReviewPage();
 
       await waitFor(() => {
@@ -279,6 +291,45 @@ describe('CrawlResultReview Integration', () => {
       });
       expect(screen.getByLabelText('ズームアウト')).toBeInTheDocument();
       expect(screen.getByLabelText('リセット')).toBeInTheDocument();
+    });
+  });
+
+  // ================================================================
+  // ヘルプモーダルのテスト
+  // ================================================================
+  describe('ヘルプモーダル', () => {
+    it('displays help button with correct aria-label (Req 6.1, 6.2, 6.4)', async () => {
+      mockFetchExtractedData.mockResolvedValueOnce(makeSampleData());
+      renderReviewPage();
+
+      await waitFor(() => {
+        expect(screen.getByText('クロール結果レビュー')).toBeInTheDocument();
+      });
+
+      const helpButton = screen.getByLabelText('ヘルプを表示');
+      expect(helpButton).toBeInTheDocument();
+      expect(helpButton.textContent).toBe('?');
+    });
+
+    it('opens help modal with page-specific content on click (Req 6.2, 6.5)', async () => {
+      mockFetchExtractedData.mockResolvedValueOnce(makeSampleData());
+      renderReviewPage();
+
+      await waitFor(() => {
+        expect(screen.getByText('クロール結果レビュー')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByLabelText('ヘルプを表示'));
+
+      await waitFor(() => {
+        expect(screen.getByText('クロール結果レビューの使い方')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/スクリーンショットとデータの並列表示/)).toBeInTheDocument();
+      expect(screen.getByText(/フィールドハイライト/)).toBeInTheDocument();
+      expect(screen.getByText(/HTML解析とOCR解析の比較/)).toBeInTheDocument();
+      // 承認ワークフロー appears both in help modal and on the page itself
+      const approvalTexts = screen.getAllByText(/承認ワークフロー/);
+      expect(approvalTexts.length).toBeGreaterThanOrEqual(2); // one in help, one in page
     });
   });
 

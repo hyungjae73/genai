@@ -114,22 +114,14 @@ def test_property_daily_crawling_execution(num_active_sites):
         return task_mock
     
     # Mock database engine and session creation
-    with patch('sqlalchemy.create_engine') as mock_engine, \
-         patch('sqlalchemy.orm.sessionmaker') as mock_sessionmaker, \
+    with patch('src.database.SessionLocal', return_value=mock_session) as mock_sl, \
          patch('src.tasks.crawl_and_validate_site.delay', side_effect=mock_delay), \
          patch.dict(os.environ, {
-             'DATABASE_URL': 'sqlite:///./test.db',
+             'DATABASE_URL': 'postgresql://test:test@localhost/test',
              'ALERT_EMAIL_RECIPIENTS': 'test@example.com',
              'SLACK_WEBHOOK_URL': 'https://hooks.slack.com/test',
              'SLACK_CHANNEL': '#alerts'
          }):
-        
-        # Setup session mock
-        Session = MagicMock()
-        Session.return_value = mock_session
-        mock_sessionmaker.return_value = Session
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
         
         # Execute the daily crawling task
         result = crawl_all_sites()
@@ -289,20 +281,12 @@ def test_property_daily_crawling_excludes_inactive_sites(num_active_sites, num_i
         return task_mock
     
     # Mock database engine and session creation
-    with patch('sqlalchemy.create_engine') as mock_engine, \
-         patch('sqlalchemy.orm.sessionmaker') as mock_sessionmaker, \
+    with patch('src.database.SessionLocal', return_value=mock_session) as mock_sl, \
          patch('src.tasks.crawl_and_validate_site.delay', side_effect=mock_delay), \
          patch.dict(os.environ, {
-             'DATABASE_URL': 'sqlite:///./test.db',
+             'DATABASE_URL': 'postgresql://test:test@localhost/test',
              'ALERT_EMAIL_RECIPIENTS': 'test@example.com'
          }):
-        
-        # Setup session mock
-        Session = MagicMock()
-        Session.return_value = mock_session
-        mock_sessionmaker.return_value = Session
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
         
         # Execute the daily crawling task
         result = crawl_all_sites()

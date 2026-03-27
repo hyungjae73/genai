@@ -7,7 +7,11 @@ import {
   type Site,
   type Category,
 } from '../services/api';
+import { Input } from '../components/ui/Input/Input';
+import { Select } from '../components/ui/Select/Select';
 import CustomerGroup from '../components/hierarchy/CustomerGroup';
+import { HelpButton } from '../components/ui/HelpButton/HelpButton';
+import './SiteManagement.css';
 
 // --- Exported interfaces ---
 
@@ -70,7 +74,7 @@ export function filterCustomers(
 
 // --- Main component ---
 
-const HierarchyView = () => {
+const SiteManagement = () => {
   const [customers, setCustomers] = useState<CustomerWithSites[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,6 +122,17 @@ const HierarchyView = () => {
     });
   };
 
+  const statusOptions = [
+    { value: 'all', label: 'すべてのステータス' },
+    { value: 'active', label: '有効' },
+    { value: 'inactive', label: '無効' },
+  ];
+
+  const categoryOptions = [
+    { value: '', label: 'すべてのカテゴリ' },
+    ...categories.map((cat) => ({ value: String(cat.id), label: cat.name })),
+  ];
+
   if (loading) {
     return <div className="loading">読み込み中...</div>;
   }
@@ -127,44 +142,58 @@ const HierarchyView = () => {
   }
 
   return (
-    <div className="hierarchy-view">
+    <div className="site-management">
       <div className="page-header">
-        <h1>階層型ビュー</h1>
+        <h1>サイト管理 <HelpButton title="サイト管理の使い方">
+          <div className="help-content">
+            <h3>ユーザーストーリー</h3>
+            <p>顧客ごとのサイト構造を把握し、各サイトの詳細操作を行いたい</p>
+
+            <h3>階層構造</h3>
+            <p>顧客→サイトの階層構造で表示されます。顧客名をクリックすると、その顧客に紐づくサイト一覧が展開されます。</p>
+
+            <h3>詳細タブ</h3>
+            <p>サイトを展開すると、以下の詳細タブが表示されます：</p>
+            <ul>
+              <li><strong>契約条件</strong>: サイトに設定された契約条件を確認・管理できます</li>
+              <li><strong>スクリーンショット</strong>: ベースライン画像と最新キャプチャを確認できます</li>
+              <li><strong>検証・比較</strong>: サイトの検証を実行し、結果を確認できます</li>
+              <li><strong>アラート</strong>: サイトに関連するアラートを確認できます</li>
+            </ul>
+
+            <h3>ベースラインスクリーンショット</h3>
+            <p>1サイトにつきベースラインスクリーンショットは1枚のみ保持されます。再キャプチャまたは再アップロードで上書きされます。</p>
+
+            <h3>検証・比較</h3>
+            <p>検証・比較はサイトのコンテキスト内で実行されます。サイトを選択する必要はありません。</p>
+          </div>
+        </HelpButton></h1>
       </div>
 
       <div className="filters">
-        <input
-          type="text"
+        <Input
+          label="検索"
+          type="search"
           placeholder="顧客名・会社名で検索..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
+          onChange={setSearchQuery}
         />
 
-        <select
+        <Select
+          label="ステータス"
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
-          className="status-filter"
-        >
-          <option value="all">すべてのステータス</option>
-          <option value="active">有効</option>
-          <option value="inactive">無効</option>
-        </select>
+          onChange={(val) => setStatusFilter(val as 'all' | 'active' | 'inactive')}
+          options={statusOptions}
+          aria-label="ステータスフィルター"
+        />
 
-        <select
-          value={categoryFilter ?? ''}
-          onChange={(e) =>
-            setCategoryFilter(e.target.value ? Number(e.target.value) : null)
-          }
-          className="status-filter"
-        >
-          <option value="">すべてのカテゴリ</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
+        <Select
+          label="カテゴリ"
+          value={categoryFilter !== null ? String(categoryFilter) : ''}
+          onChange={(val) => setCategoryFilter(val ? Number(val) : null)}
+          options={categoryOptions}
+          aria-label="カテゴリフィルター"
+        />
       </div>
 
       <div className="hierarchy-list">
@@ -186,4 +215,4 @@ const HierarchyView = () => {
   );
 };
 
-export default HierarchyView;
+export default SiteManagement;

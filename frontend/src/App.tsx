@@ -1,15 +1,15 @@
 import { Component, ErrorInfo, ReactNode, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import Sites from './pages/Sites';
 import Alerts from './pages/Alerts';
+import FakeSites from './pages/FakeSites';
 import Rules from './pages/Rules';
 import Contracts from './pages/Contracts';
-import Screenshots from './pages/Screenshots';
-import Verification from './pages/Verification';
-import HierarchyView from './pages/HierarchyView';
+import SiteManagement from './pages/SiteManagement';
 import AuthGuard from './components/AuthGuard';
+import { AppLayout } from './layouts/AppLayout';
 import './App.css';
 
 // Lazy-loaded components for performance (Req Performance.2)
@@ -60,42 +60,25 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
-        <div className="app">
-          <nav className="navbar">
-            <div className="nav-brand">
-              <h2>決済条件監視システム</h2>
-            </div>
-            <ul className="nav-links">
-              <li><Link to="/">ダッシュボード</Link></li>
-              <li><Link to="/customers">顧客</Link></li>
-              <li><Link to="/sites">監視サイト</Link></li>
-              <li><Link to="/hierarchy">階層型ビュー</Link></li>
-              <li><Link to="/contracts">契約条件</Link></li>
-              <li><Link to="/screenshots">スクリーンショット</Link></li>
-              <li><Link to="/verification">検証・比較</Link></li>
-              <li><Link to="/alerts">アラート</Link></li>
-              <li><Link to="/rules">チェックルール</Link></li>
-            </ul>
-          </nav>
-
-          <main className="main-content">
-            <ErrorBoundary>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/sites" element={<Sites />} />
-                <Route path="/contracts" element={<Contracts />} />
-                <Route path="/screenshots" element={<Screenshots />} />
-                <Route path="/verification" element={<Verification />} />
-                <Route path="/alerts" element={<Alerts />} />
-                <Route path="/rules" element={<Rules />} />
-                <Route path="/hierarchy" element={<HierarchyView />} />
-                <Route path="/sites/:siteId/crawl-results/:crawlResultId/review" element={<AuthGuard><Suspense fallback={<div className="loading-fallback">読み込み中...</div>}><CrawlResultReviewPage /></Suspense></AuthGuard>} />
-                <Route path="/sites/:siteId/crawl-results/compare" element={<AuthGuard><Suspense fallback={<div className="loading-fallback">読み込み中...</div>}><CrawlResultComparePage /></Suspense></AuthGuard>} />
-              </Routes>
-            </ErrorBoundary>
-          </main>
-        </div>
+        <AppLayout>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/customers" element={<Customers />} />
+              <Route path="/sites" element={<Sites />} />
+              <Route path="/contracts" element={<Contracts />} />
+              <Route path="/site-management" element={<SiteManagement />} />
+              <Route path="/hierarchy" element={<Navigate to="/site-management" replace />} />
+              <Route path="/screenshots" element={<Navigate to="/site-management" replace />} />
+              <Route path="/verification" element={<Navigate to="/site-management" replace />} />
+              <Route path="/alerts" element={<Alerts />} />
+              <Route path="/fake-sites" element={<FakeSites />} />
+              <Route path="/rules" element={<Rules />} />
+              <Route path="/sites/:siteId/crawl-results/:crawlResultId/review" element={<AuthGuard><Suspense fallback={<div className="loading-fallback">読み込み中...</div>}><CrawlResultReviewPage /></Suspense></AuthGuard>} />
+              <Route path="/sites/:siteId/crawl-results/compare" element={<AuthGuard><Suspense fallback={<div className="loading-fallback">読み込み中...</div>}><CrawlResultComparePage /></Suspense></AuthGuard>} />
+            </Routes>
+          </ErrorBoundary>
+        </AppLayout>
       </Router>
     </ErrorBoundary>
   );

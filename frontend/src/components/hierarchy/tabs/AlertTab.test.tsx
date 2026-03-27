@@ -21,6 +21,7 @@ describe('AlertTab', () => {
       site_name: 'Test Site',
       severity: 'high',
       message: 'Price mismatch detected',
+      alert_type: 'violation',
       violation_type: 'price_violation',
       created_at: '2024-01-15T10:00:00Z',
       is_resolved: false,
@@ -31,6 +32,7 @@ describe('AlertTab', () => {
       site_name: 'Test Site',
       severity: 'low',
       message: 'Minor formatting issue',
+      alert_type: 'violation',
       violation_type: 'format_violation',
       created_at: '2024-01-14T09:00:00Z',
       is_resolved: true,
@@ -135,6 +137,56 @@ describe('AlertTab', () => {
         // Should have at least one of each (one in filter, one in badge)
         expect(statusBadges.length).toBeGreaterThanOrEqual(1);
         expect(resolvedBadges.length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it('displays "偽サイト" badge with fake-site class for fake_site alerts', async () => {
+      const fakeSiteAlerts: Alert[] = [
+        {
+          id: 10,
+          site_id: 1,
+          site_name: 'Test Site',
+          severity: 'critical',
+          message: 'Fake site detected',
+          alert_type: 'fake_site',
+          violation_type: 'fake_site',
+          created_at: '2024-01-15T10:00:00Z',
+          is_resolved: false,
+        },
+      ];
+      vi.mocked(api.getSiteAlerts).mockResolvedValue(fakeSiteAlerts);
+
+      render(<AlertTab siteId={1} customerName="Test Customer" />);
+
+      await waitFor(() => {
+        const badge = screen.getByText('偽サイト');
+        expect(badge).toBeInTheDocument();
+        expect(badge.className).toBe('alert-type-badge fake-site');
+      });
+    });
+
+    it('displays "契約違反" badge with violation class for non-fake_site alerts', async () => {
+      const violationAlerts: Alert[] = [
+        {
+          id: 11,
+          site_id: 1,
+          site_name: 'Test Site',
+          severity: 'medium',
+          message: 'Violation detected',
+          alert_type: 'violation',
+          violation_type: 'price_violation',
+          created_at: '2024-01-15T10:00:00Z',
+          is_resolved: false,
+        },
+      ];
+      vi.mocked(api.getSiteAlerts).mockResolvedValue(violationAlerts);
+
+      render(<AlertTab siteId={1} customerName="Test Customer" />);
+
+      await waitFor(() => {
+        const badge = screen.getByText('契約違反');
+        expect(badge).toBeInTheDocument();
+        expect(badge.className).toBe('alert-type-badge violation');
       });
     });
   });

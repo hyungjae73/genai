@@ -1,0 +1,108 @@
+/* Customers page — トークンベーススタイル */
+
+.customers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.customers h1 {
+  font-size: var(--font-xl);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.customers .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.customers .filters {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.customers .action-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Form styles inside modal */
+.customer-form-group {
+  margin-bottom: var(--space-4);
+}
+
+.customer-form-group label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-base);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.customer-form-group input[type="text"],
+.customer-form-group input[type="email"],
+.customer-form-group input[type="tel"],
+.customer-form-group textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-surface);
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.customer-form-group input:focus,
+.customer-form-group textarea:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px var(--color-accent-subtle);
+}
+
+.customer-form-group textarea {
+  resize: vertical;
+}
+
+.customer-form-group .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--font-base);
+  color: var(--color-text-primary);
+}
+
+.customer-form-error {
+  color: var(--color-danger);
+  background-color: var(--color-danger-subtle);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-sm);
+  margin-bottom: var(--space-4);
+}
+
+.customer-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+
+@media (max-width: 767px) {
+  .customers .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .customers .filters {
+    flex-direction: column;
+  }
+}

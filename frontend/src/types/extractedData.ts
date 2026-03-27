@@ -47,6 +47,7 @@ export interface ExtractedPaymentInfo {
   id: number;
   crawl_result_id: number;
   site_id: number;
+  source: 'html' | 'ocr';
   product_info: ProductInfo | null;
   price_info: PriceInfo[] | null;
   payment_methods: PaymentMethod[] | null;
@@ -105,4 +106,31 @@ export interface AuditLogEntry {
   old_value: string | null;
   new_value: string | null;
   action: string;
+}
+
+
+// --- HTML vs OCR comparison types ---
+
+export interface ExtractedDataComparison {
+  html_data: ExtractedPaymentInfo | null;
+  ocr_data: ExtractedPaymentInfo | null;
+}
+
+
+// --- Visual confirmation types ---
+
+export interface VisualConfirmationData {
+  screenshot_url: string | null;
+  raw_html: string | null;
+  extraction_status: 'no_data' | 'partial' | 'complete';
+  html_data: ExtractedPaymentInfo | null;
+  ocr_data: ExtractedPaymentInfo | null;
+}
+
+export interface ManualExtractionInput {
+  product_name?: string;
+  price?: string;
+  currency?: string;
+  payment_methods?: string[];
+  additional_fees?: string;
 }

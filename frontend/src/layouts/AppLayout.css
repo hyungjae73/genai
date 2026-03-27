@@ -1,0 +1,171 @@
+/* AppLayout — サイドバー + メインコンテンツの2カラムレイアウト */
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+/* --- Header --- */
+
+.app-layout__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 var(--space-4);
+  background-color: var(--color-nav-bg);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-layout__header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.app-layout__hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--font-lg);
+  transition: background-color 0.15s ease;
+}
+
+.app-layout__hamburger:hover {
+  background-color: var(--color-bg-surface-hover);
+}
+
+.app-layout__hamburger:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.app-layout__title {
+  margin: 0;
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.app-layout__header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- Body (sidebar + main) --- */
+
+.app-layout__body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- Sidebar wrapper --- */
+
+.app-layout__sidebar {
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.2s ease;
+}
+
+/* --- Main content --- */
+
+.app-layout__main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  min-width: 0;
+}
+
+/* --- Drawer overlay (mobile) --- */
+
+.app-layout__overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background-color: var(--color-bg-overlay);
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.app-layout__overlay--visible {
+  display: block;
+  opacity: 1;
+}
+
+/* --- Drawer (mobile sidebar) --- */
+
+.app-layout__drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  z-index: 201;
+  background-color: var(--color-nav-bg);
+  box-shadow: var(--shadow-xl);
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  overflow-y: auto;
+}
+
+.app-layout__drawer--open {
+  transform: translateX(0);
+}
+
+/* --- Responsive: Mobile (<768px) --- */
+
+@media (max-width: 767px) {
+  .app-layout__hamburger {
+    display: flex;
+  }
+
+  .app-layout__sidebar {
+    display: none;
+  }
+
+  .app-layout__main {
+    padding: var(--space-4);
+  }
+}
+
+/* --- Responsive: Tablet (768px - 1023px) --- */
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .app-layout__drawer {
+    display: none;
+  }
+
+  .app-layout__overlay {
+    display: none !important;
+  }
+}
+
+/* --- Responsive: Desktop (≥1024px) --- */
+
+@media (min-width: 1024px) {
+  .app-layout__drawer {
+    display: none;
+  }
+
+  .app-layout__overlay {
+    display: none !important;
+  }
+}

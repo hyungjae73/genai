@@ -18,20 +18,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 \
     libatspi2.0-0 libxshmfence1 fonts-liberation \
     xdg-utils wget \
+    tesseract-ocr tesseract-ocr-jpn \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
 
-# Playwright Chromiumブラウザのインストール
-RUN playwright install chromium
+# appuserを先に作成し、Playwrightブラウザを共有パスにインストール
+RUN useradd -m -u 1000 appuser
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN mkdir -p /opt/playwright-browsers && playwright install chromium && chmod -R 755 /opt/playwright-browsers
 
 COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
+RUN mkdir -p /app/screenshots && chown -R appuser:appuser /app
+
+# gosuをインストール（entrypoint.shでroot→appuser切り替え用）
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

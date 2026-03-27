@@ -9,7 +9,7 @@ import SiteDetailPanel, { type TabType } from '../components/hierarchy/SiteDetai
 
 const arbSiteId = fc.integer({ min: 1, max: 100000 });
 const arbCustomerName = fc.string({ minLength: 1, maxLength: 100 });
-const arbTabType = fc.constantFrom<TabType>('contracts', 'screenshots', 'verification', 'alerts');
+const arbTabType = fc.constantFrom<TabType>('contracts', 'screenshots', 'verification', 'alerts', 'schedule');
 
 // --- Property 5: デフォルトタブ選択 ---
 
@@ -32,7 +32,7 @@ describe('Feature: hierarchical-ui-restructure, Property 5: デフォルトタ�
 
           // Find all tab buttons
           const tabButtons = container.querySelectorAll('.tab-button');
-          expect(tabButtons.length).toBe(5); // 4 tabs + 1 compare link
+          expect(tabButtons.length).toBe(6); // 5 tabs + 1 compare link
 
           // Find the active tab button
           const activeTabButton = container.querySelector('.tab-button.active');
@@ -163,6 +163,7 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
       screenshots: `/api/screenshots/site/${siteId}`,
       verification: `/api/verification/results/${siteId}`,
       alerts: `/api/alerts/site/${siteId}`,
+      schedule: `/api/sites/${siteId}/schedule`,
     };
     return endpointMap[tabType];
   };
@@ -195,6 +196,9 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
             case 'alerts':
               expect(expectedEndpoint).toBe(`/api/alerts/site/${siteId}`);
               break;
+            case 'schedule':
+              expect(expectedEndpoint).toBe(`/api/sites/${siteId}/schedule`);
+              break;
           }
         }
       ),
@@ -207,7 +211,7 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
       fc.property(
         arbSiteId,
         (siteId) => {
-          const tabs: TabType[] = ['contracts', 'screenshots', 'verification', 'alerts'];
+          const tabs: TabType[] = ['contracts', 'screenshots', 'verification', 'alerts', 'schedule'];
           const endpoints = tabs.map((tab) => getExpectedEndpoint(tab, siteId));
 
           // All endpoints should be unique
@@ -233,7 +237,7 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
           const endpoint = getExpectedEndpoint(tabType, siteId);
 
           // Extract the siteId from the endpoint
-          const siteIdMatch = endpoint.match(/\/(\d+)$/);
+          const siteIdMatch = endpoint.match(/\/(\d+)(?:\/|$)/);
           expect(siteIdMatch).not.toBeNull();
 
           if (siteIdMatch) {
@@ -271,7 +275,7 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
       fc.property(
         arbSiteId,
         (siteId) => {
-          const allTabs: TabType[] = ['contracts', 'screenshots', 'verification', 'alerts'];
+          const allTabs: TabType[] = ['contracts', 'screenshots', 'verification', 'alerts', 'schedule'];
 
           allTabs.forEach((tabType) => {
             const endpoint = getExpectedEndpoint(tabType, siteId);
@@ -283,8 +287,8 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
             // Endpoint should start with /api/
             expect(endpoint).toMatch(/^\/api\//);
 
-            // Endpoint should end with the siteId
-            expect(endpoint).toMatch(new RegExp(`/${siteId}$`));
+            // Endpoint should contain the siteId
+            expect(endpoint).toContain(`/${siteId}`);
           });
         }
       ),
@@ -310,7 +314,7 @@ describe('Feature: hierarchical-ui-restructure, Property 4: タブ選択によ�
           expect(endpoint).not.toContain('//');
 
           // Should contain the resource name
-          const resourceNames = ['contracts', 'screenshots', 'verification', 'alerts'];
+          const resourceNames = ['contracts', 'screenshots', 'verification', 'alerts', 'sites'];
           const hasResourceName = resourceNames.some((name) => endpoint.includes(name));
           expect(hasResourceName).toBe(true);
         }

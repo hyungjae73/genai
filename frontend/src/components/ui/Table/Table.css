@@ -1,0 +1,108 @@
+/* Table — セマンティックトークンのみ使用 */
+
+/* --- Wrapper --- */
+.table-wrapper {
+  width: 100%;
+}
+
+/* --- Desktop table --- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-base);
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--color-bg-surface-hover);
+}
+
+/* --- Empty state --- */
+.table-empty {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-text-secondary);
+  font-size: var(--font-base);
+}
+
+/* --- Card-mode mobile view (hidden on desktop) --- */
+.table-cards {
+  display: none;
+}
+
+.table-card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.table-card + .table-card {
+  margin-top: var(--space-3);
+}
+
+.table-card__field {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-1) 0;
+}
+
+.table-card__field + .table-card__field {
+  border-top: 1px solid var(--color-border);
+}
+
+.table-card__label {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.table-card__value {
+  font-size: var(--font-base);
+  color: var(--color-text-primary);
+  text-align: right;
+}
+
+/* --- Mobile: card mode --- */
+@media (max-width: 767px) {
+  .table-wrapper--mobile-card .table {
+    display: none;
+  }
+
+  .table-wrapper--mobile-card .table-cards {
+    display: block;
+  }
+}
+
+/* --- Mobile: scroll mode --- */
+@media (max-width: 767px) {
+  .table-wrapper--mobile-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-wrapper--mobile-scroll .table {
+    min-width: 600px;
+  }
+}

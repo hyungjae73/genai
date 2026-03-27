@@ -1,0 +1,49 @@
+/* Dashboard — セマンティックトークンベースのスタイル */
+
+.dashboard h1 {
+  margin-bottom: var(--space-8);
+  font-size: var(--font-xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-top: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.stat-card-title {
+  font-size: var(--font-base);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: var(--font-2xl);
+  font-weight: bold;
+  color: var(--color-accent);
+  margin-bottom: var(--space-1);
+}
+
+.stat-label {
+  font-size: var(--font-base);
+  color: var(--color-text-secondary);
+}
+
+.chart-container {
+  background: var(--color-bg-surface);
+  padding: var(--space-8);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+@media (max-width: 767px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

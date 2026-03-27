@@ -106,8 +106,46 @@ async def _run_verification_task(site_id: int, db: Session):
             )
             
             # Run verification
-            await verification_service.run_verification(site_id)
-    
+            result = await verification_service.run_verification(site_id)
+
+            # If verification failed without saving to DB, save the error result
+            if result.status in ("failure", "partial_failure"):
+                error_record = VerificationResult(
+                    site_id=site_id,
+                    html_data=result.html_payment_info or {},
+                    ocr_data=result.ocr_payment_info or {},
+                    html_violations={"items": []},
+                    ocr_violations={"items": []},
+                    discrepancies={"items": result.discrepancies or []},
+                    screenshot_path=result.screenshot_path or "",
+                    ocr_confidence=result.ocr_confidence or 0.0,
+                    status=result.status,
+                    error_message=result.error_message,
+                    created_at=datetime.utcnow(),
+                )
+                db.add(error_record)
+                db.commit()
+
+    except Exception as e:
+        # Save error to DB so the status endpoint can report it
+        try:
+            error_record = VerificationResult(
+                site_id=site_id,
+                html_data={},
+                ocr_data={},
+                html_violations={"items": []},
+                ocr_violations={"items": []},
+                discrepancies={"items": []},
+                screenshot_path="",
+                ocr_confidence=0.0,
+                status="failure",
+                error_message=f"Verification failed: {str(e)}",
+                created_at=datetime.utcnow(),
+            )
+            db.add(error_record)
+            db.commit()
+        except Exception:
+            pass  # DB write failed too — nothing more we can do
     finally:
         # Remove from running verifications
         if site_id in _running_verifications:
@@ -196,32 +234,12 @@ async def get_verification_results(
     
     total = query.count()
     
-    if total == 0:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No verification results found for site {site_id}"
-        )
-    
     results = query.offset(offset).limit(limit).all()
     
     # Format results
     formatted_results = []
     for result in results:
-        formatted_results.append({
-            'id': result.id,
-            'site_id': result.site_id,
-            'site_name': site.name,
-            'html_data': result.html_data,
-            'ocr_data': result.ocr_data,
-            'discrepancies': result.discrepancies.get('items', []),
-            'html_violations': result.html_violations.get('items', []),
-            'ocr_violations': result.ocr_violations.get('items', []),
-            'screenshot_path': result.screenshot_path,
-            'ocr_confidence': result.ocr_confidence,
-            'status': result.status,
-            'error_message': result.error_message,
-            'created_at': result.created_at
-        })
+        formatted_results.append(_format_verification_result(result, site.name))
     
     return {
         'results': formatted_results,
@@ -263,10 +281,11 @@ async def get_verification_status(
     ).order_by(VerificationResult.created_at.desc()).first()
     
     if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No verification found for job {job_id}"
-        )
+        return {
+            'job_id': job_id,
+            'status': 'processing',
+            'result': None
+        }
     
     # Get site name
     site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
@@ -274,19 +293,45 @@ async def get_verification_status(
     return {
         'job_id': job_id,
         'status': 'completed' if result.status == 'success' else 'failed',
-        'result': {
-            'id': result.id,
-            'site_id': result.site_id,
-            'site_name': site.name if site else 'Unknown',
-            'html_data': result.html_data,
-            'ocr_data': result.ocr_data,
-            'discrepancies': result.discrepancies.get('items', []),
-            'html_violations': result.html_violations.get('items', []),
-            'ocr_violations': result.ocr_violations.get('items', []),
-            'screenshot_path': result.screenshot_path,
-            'ocr_confidence': result.ocr_confidence,
-            'status': result.status,
-            'error_message': result.error_message,
-            'created_at': result.created_at
-        }
+        'result': _format_verification_result(result, site.name if site else 'Unknown'),
     }
+
+
+def _format_verification_result(result: VerificationResult, site_name: str) -> dict:
+    """Format a VerificationResult for API response.
+
+    Handles NULL new pipeline fields gracefully so that legacy clients
+    receive a structurally compatible response (Req 22.5, 22.6).
+
+    Args:
+        result: VerificationResult model instance.
+        site_name: Name of the monitoring site.
+
+    Returns:
+        Dict with all fields, new pipeline fields defaulting to safe values
+        when NULL.
+    """
+    response = {
+        'id': result.id,
+        'site_id': result.site_id,
+        'site_name': site_name,
+        'html_data': result.html_data,
+        'ocr_data': result.ocr_data,
+        'discrepancies': result.discrepancies.get('items', []) if result.discrepancies else [],
+        'html_violations': result.html_violations.get('items', []) if result.html_violations else [],
+        'ocr_violations': result.ocr_violations.get('items', []) if result.ocr_violations else [],
+        'screenshot_path': result.screenshot_path,
+        'ocr_confidence': result.ocr_confidence,
+        'status': result.status,
+        'error_message': result.error_message,
+        'created_at': result.created_at,
+    }
+
+    # Pipeline fields — safe defaults when NULL (backward compatibility)
+    response['structured_data'] = result.structured_data if result.structured_data is not None else None
+    response['structured_data_violations'] = result.structured_data_violations if result.structured_data_violations is not None else None
+    response['data_source'] = result.data_source if result.data_source is not None else None
+    response['structured_data_status'] = result.structured_data_status if result.structured_data_status is not None else None
+    response['evidence_status'] = result.evidence_status if result.evidence_status is not None else None
+
+    return response

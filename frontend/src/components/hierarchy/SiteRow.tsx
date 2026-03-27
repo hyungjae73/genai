@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Site } from '../../services/api';
 import { triggerCrawl, getCrawlStatus, getLatestCrawlResult } from '../../services/api';
+import { Badge } from '../ui/Badge/Badge';
+import { Button } from '../ui/Button/Button';
 import SiteDetailPanel from './SiteDetailPanel';
 import CrawlResultModal from './CrawlResultModal';
 
@@ -11,6 +13,16 @@ export interface SiteRowProps {
   onToggle: () => void;
   onCrawlComplete?: () => void;
 }
+
+const complianceToBadgeVariant = (status: string): 'success' | 'warning' | 'danger' | 'info' => {
+  switch (status) {
+    case 'compliant': return 'success';
+    case 'violation': return 'danger';
+    case 'pending': return 'warning';
+    case 'error': return 'danger';
+    default: return 'info';
+  }
+};
 
 const SiteRow = ({ site, customerName, isExpanded, onToggle, onCrawlComplete }: SiteRowProps) => {
   const [isCrawling, setIsCrawling] = useState(false);
@@ -150,39 +162,36 @@ const SiteRow = ({ site, customerName, isExpanded, onToggle, onCrawlComplete }: 
         <span className="site-category">
           {site.category_id ? `カテゴリ ${site.category_id}` : '未分類'}
         </span>
-        <span className={`compliance-badge compliance-${site.compliance_status}`}>
+        <Badge variant={complianceToBadgeVariant(site.compliance_status)} size="sm">
           {getComplianceStatusLabel(site.compliance_status)}
-        </span>
+        </Badge>
         <span className="last-crawl">
           {formatDate(lastCrawlDate)}
         </span>
-        <span className={site.is_active ? 'badge-active' : 'badge-inactive'}>
+        <Badge variant={site.is_active ? 'success' : 'neutral'} size="sm">
           {site.is_active ? '有効' : '無効'}
-        </span>
+        </Badge>
         
-        <button
-          className="crawl-button"
-          onClick={handleCrawlClick}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={isCrawling}
           disabled={isCrawling}
-          title="今すぐクロール"
+          onClick={handleCrawlClick as any}
+          aria-label="今すぐクロール"
         >
-          {isCrawling ? (
-            <>
-              <span className="spinner">⟳</span>
-              クロール中...
-            </>
-          ) : (
-            '今すぐクロール'
-          )}
-        </button>
+          {isCrawling ? 'クロール中...' : '今すぐクロール'}
+        </Button>
         
         {latestCrawlResultId && currentJobId && (
-          <button
-            className="crawl-result-button"
-            onClick={handleShowResults}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleShowResults as any}
+            aria-label="結果を表示"
           >
             結果を表示
-          </button>
+          </Button>
         )}
       </div>
 

@@ -30,9 +30,14 @@ export interface Alert {
   site_name: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   message: string;
+  alert_type: string;
   violation_type: string;
   created_at: string;
   is_resolved: boolean;
+  fake_domain?: string;
+  legitimate_domain?: string;
+  domain_similarity_score?: number;
+  content_similarity_score?: number;
 }
 
 export interface Statistics {
@@ -42,6 +47,8 @@ export interface Statistics {
   high_severity_violations: number;
   success_rate: number;
   last_crawl: string | null;
+  fake_site_alerts: number;
+  unresolved_fake_site_alerts: number;
 }
 
 export interface MonitoringHistory {

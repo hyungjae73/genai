@@ -4,7 +4,7 @@ import {
   groupSitesByCustomer,
   filterCustomers,
   type CustomerWithSites,
-} from '../pages/HierarchyView';
+} from '../pages/SiteManagement';
 import type { Customer, Site } from '../services/api';
 
 // --- Arbitrary generators ---

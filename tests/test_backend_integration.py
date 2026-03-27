@@ -6,204 +6,21 @@ Covers:
 - Price history tracking and anomaly detection with real DB
 - API endpoint integration: CRUD operations with real data flow
 
-Uses SQLite in-memory database following existing test patterns.
+Uses shared PostgreSQL testcontainers fixtures from conftest.py.
 """
 
 import pytest
-from datetime import datetime, timedelta
-from sqlalchemy import (
-    create_engine, Column, Integer, Float, String, Text,
-    DateTime, Boolean, ForeignKey,
+from datetime import datetime
+
+from src.models import (
+    Alert,
+    AuditLog,
+    Customer,
+    CrawlResult,
+    ExtractedPaymentInfo,
+    MonitoringSite,
+    PriceHistory,
 )
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy.pool import StaticPool
-from sqlalchemy.types import JSON
-from fastapi.testclient import TestClient
-
-from src.main import app
-from src.database import get_db
-from src.auth import verify_api_key
-
-
-# ---------------------------------------------------------------------------
-# Test-specific models (JSON instead of JSONB for SQLite)
-# ---------------------------------------------------------------------------
-
-class TestBase(DeclarativeBase):
-    pass
-
-
-class TCustomer(TestBase):
-    __tablename__ = "customers"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    company_name = Column(String(255), nullable=True)
-    email = Column(String(255), nullable=False)
-    phone = Column(String(50), nullable=True)
-    address = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
-
-
-class TMonitoringSite(TestBase):
-    __tablename__ = "monitoring_sites"
-    id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    url = Column(Text, nullable=False)
-    is_active = Column(Boolean, default=True)
-    last_crawled_at = Column(DateTime, nullable=True)
-    compliance_status = Column(String(50), default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    category_id = Column(Integer, nullable=True)
-
-
-class TCrawlResult(TestBase):
-    __tablename__ = "crawl_results"
-    id = Column(Integer, primary_key=True)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
-    url = Column(Text, nullable=False)
-    html_content = Column(Text, nullable=False)
-    screenshot_path = Column(Text, nullable=True)
-    status_code = Column(Integer, nullable=False)
-    crawled_at = Column(DateTime, default=datetime.utcnow)
-
-
-class TExtractedPaymentInfo(TestBase):
-    __tablename__ = "extracted_payment_info"
-    id = Column(Integer, primary_key=True)
-    crawl_result_id = Column(Integer, ForeignKey("crawl_results.id"), nullable=False)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
-    product_info = Column(JSON, nullable=True)
-    price_info = Column(JSON, nullable=True)
-    payment_methods = Column(JSON, nullable=True)
-    fees = Column(JSON, nullable=True)
-    extraction_metadata = Column("metadata", JSON, nullable=True)
-    confidence_scores = Column(JSON, nullable=True)
-    overall_confidence_score = Column(Float, nullable=True)
-    status = Column(String(20), default="pending", nullable=False)
-    language = Column(String(10), nullable=True)
-    extracted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class TAuditLog(TestBase):
-    __tablename__ = "audit_logs"
-    id = Column(Integer, primary_key=True)
-    user = Column(String(255), nullable=False)
-    action = Column(String(100), nullable=False)
-    resource_type = Column(String(100), nullable=False)
-    resource_id = Column(Integer, nullable=True)
-    details = Column(JSON, nullable=True)
-    ip_address = Column(String(45), nullable=True)
-    user_agent = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-
-
-class TPriceHistory(TestBase):
-    __tablename__ = "price_history"
-    id = Column(Integer, primary_key=True)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
-    product_identifier = Column(String(500), nullable=False)
-    price = Column(Float, nullable=False)
-    currency = Column(String(10), nullable=False)
-    price_type = Column(String(50), nullable=False)
-    previous_price = Column(Float, nullable=True)
-    price_change_amount = Column(Float, nullable=True)
-    price_change_percentage = Column(Float, nullable=True)
-    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    extracted_payment_info_id = Column(Integer, nullable=True)
-
-
-class TAlert(TestBase):
-    __tablename__ = "alerts"
-    id = Column(Integer, primary_key=True)
-    violation_id = Column(Integer, nullable=True)
-    alert_type = Column(String(50), nullable=False)
-    severity = Column(String(20), nullable=False)
-    message = Column(Text, nullable=False)
-    is_resolved = Column(Boolean, default=False)
-    site_id = Column(Integer, ForeignKey("monitoring_sites.id"), nullable=True)
-    email_sent = Column(Boolean, default=False)
-    slack_sent = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    old_price = Column(Float, nullable=True)
-    new_price = Column(Float, nullable=True)
-    change_percentage = Column(Float, nullable=True)
-
-
-class TViolation(TestBase):
-    __tablename__ = "violations"
-    id = Column(Integer, primary_key=True)
-    validation_result_id = Column(Integer, nullable=False)
-    violation_type = Column(String(50), nullable=False)
-    severity = Column(String(20), nullable=False)
-    field_name = Column(String(100), nullable=False)
-    expected_value = Column(JSON, nullable=False)
-    actual_value = Column(JSON, nullable=False)
-    detected_at = Column(DateTime, default=datetime.utcnow)
-
-
-# ---------------------------------------------------------------------------
-# Shared engine / session
-# ---------------------------------------------------------------------------
-
-_engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-_SessionLocal = sessionmaker(bind=_engine)
-
-
-@pytest.fixture(autouse=True)
-def _setup_tables():
-    """Create tables before each test, drop after."""
-    TestBase.metadata.create_all(_engine)
-    yield
-    TestBase.metadata.drop_all(_engine)
-
-
-@pytest.fixture
-def db_session():
-    session = _SessionLocal()
-    yield session
-    session.close()
-
-
-@pytest.fixture(autouse=True)
-def _patch_models(monkeypatch):
-    """Redirect ORM model references to SQLite-compatible test models."""
-    import src.api.extracted_data as ep_mod
-    import src.api.screenshots as ss_mod
-    monkeypatch.setattr(ep_mod, "ExtractedPaymentInfo", TExtractedPaymentInfo)
-    monkeypatch.setattr(ep_mod, "AuditLog", TAuditLog)
-    monkeypatch.setattr(ep_mod, "PriceHistory", TPriceHistory)
-    monkeypatch.setattr(ss_mod, "CrawlResult", TCrawlResult)
-
-
-@pytest.fixture
-def client():
-    """FastAPI TestClient with overridden DB and auth dependencies."""
-
-    def _override_get_db():
-        session = _SessionLocal()
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    async def _override_auth(x_api_key: str = "test-api-key"):
-        return x_api_key
-
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[verify_api_key] = _override_auth
-    yield TestClient(app)
-    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -212,10 +29,10 @@ def client():
 
 def _seed_site(session):
     """Create a customer + monitoring site, return (customer, site)."""
-    customer = TCustomer(name="Integration Test Customer", email="integ@example.com")
+    customer = Customer(name="Integration Test Customer", email="integ@example.com")
     session.add(customer)
     session.flush()
-    site = TMonitoringSite(
+    site = MonitoringSite(
         customer_id=customer.id,
         name="Integration Test Site",
         url="https://integration-test.example.com",
@@ -227,7 +44,7 @@ def _seed_site(session):
 
 def _seed_crawl_result(session, site_id, html_content="<html></html>", url=None):
     """Create a crawl result for the given site."""
-    cr = TCrawlResult(
+    cr = CrawlResult(
         site_id=site_id,
         url=url or "https://integration-test.example.com/page",
         html_content=html_content,
@@ -253,7 +70,7 @@ def _seed_extracted_info(session, crawl_result_id, site_id, **kwargs):
         extracted_at=datetime.utcnow(),
     )
     defaults.update(kwargs)
-    record = TExtractedPaymentInfo(
+    record = ExtractedPaymentInfo(
         crawl_result_id=crawl_result_id,
         site_id=site_id,
         **defaults,
@@ -266,7 +83,7 @@ def _seed_extracted_info(session, crawl_result_id, site_id, **kwargs):
 def _seed_price_history(session, site_id, product_id="Test Product [SKU-001]",
                         price=1000.0, recorded_at=None, **kwargs):
     """Create a price history record."""
-    record = TPriceHistory(
+    record = PriceHistory(
         site_id=site_id,
         product_identifier=product_id,
         price=price,
@@ -346,7 +163,7 @@ class TestExtractionPipelineIntegration:
 
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id, html_content=_JSONLD_HTML)
-        db_session.commit()
+        db_session.flush()
 
         extractor = PaymentInfoExtractor()
         extracted = extractor.extract_payment_info(_JSONLD_HTML, cr.url)
@@ -359,7 +176,7 @@ class TestExtractionPipelineIntegration:
         assert extracted["overall_confidence"] > 0.0
 
         # Persist to DB
-        record = TExtractedPaymentInfo(
+        record = ExtractedPaymentInfo(
             crawl_result_id=cr.id,
             site_id=site.id,
             product_info=extracted["product_info"],
@@ -373,10 +190,10 @@ class TestExtractionPipelineIntegration:
             language=extracted["language"],
         )
         db_session.add(record)
-        db_session.commit()
+        db_session.flush()
 
         # Verify persistence
-        saved = db_session.query(TExtractedPaymentInfo).filter_by(
+        saved = db_session.query(ExtractedPaymentInfo).filter_by(
             crawl_result_id=cr.id
         ).first()
         assert saved is not None
@@ -391,7 +208,7 @@ class TestExtractionPipelineIntegration:
 
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id, html_content=_SEMANTIC_HTML)
-        db_session.commit()
+        db_session.flush()
 
         extractor = PaymentInfoExtractor()
         extracted = extractor.extract_payment_info(_SEMANTIC_HTML, cr.url)
@@ -399,7 +216,7 @@ class TestExtractionPipelineIntegration:
         assert extracted["extraction_source"] == "semantic_html"
         assert len(extracted["price_info"]) > 0
 
-        record = TExtractedPaymentInfo(
+        record = ExtractedPaymentInfo(
             crawl_result_id=cr.id,
             site_id=site.id,
             product_info=extracted["product_info"],
@@ -413,9 +230,9 @@ class TestExtractionPipelineIntegration:
             language=extracted["language"],
         )
         db_session.add(record)
-        db_session.commit()
+        db_session.flush()
 
-        saved = db_session.query(TExtractedPaymentInfo).filter_by(
+        saved = db_session.query(ExtractedPaymentInfo).filter_by(
             crawl_result_id=cr.id
         ).first()
         assert saved is not None
@@ -427,7 +244,7 @@ class TestExtractionPipelineIntegration:
 
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id, html_content="<html><body></body></html>")
-        db_session.commit()
+        db_session.flush()
 
         extractor = PaymentInfoExtractor()
         extracted = extractor.extract_payment_info("<html><body></body></html>", cr.url)
@@ -436,7 +253,7 @@ class TestExtractionPipelineIntegration:
         assert isinstance(extracted, dict)
         assert extracted["extraction_source"] == "regex"
 
-        record = TExtractedPaymentInfo(
+        record = ExtractedPaymentInfo(
             crawl_result_id=cr.id,
             site_id=site.id,
             product_info=extracted["product_info"],
@@ -450,9 +267,9 @@ class TestExtractionPipelineIntegration:
             language=extracted["language"],
         )
         db_session.add(record)
-        db_session.commit()
+        db_session.flush()
 
-        saved = db_session.query(TExtractedPaymentInfo).filter_by(
+        saved = db_session.query(ExtractedPaymentInfo).filter_by(
             crawl_result_id=cr.id
         ).first()
         assert saved is not None
@@ -464,13 +281,13 @@ class TestExtractionPipelineIntegration:
         _, site = _seed_site(db_session)
         cr1 = _seed_crawl_result(db_session, site.id, html_content=_JSONLD_HTML)
         cr2 = _seed_crawl_result(db_session, site.id, html_content=_SEMANTIC_HTML)
-        db_session.commit()
+        db_session.flush()
 
         extractor = PaymentInfoExtractor()
 
         for cr, html in [(cr1, _JSONLD_HTML), (cr2, _SEMANTIC_HTML)]:
             extracted = extractor.extract_payment_info(html, cr.url)
-            record = TExtractedPaymentInfo(
+            record = ExtractedPaymentInfo(
                 crawl_result_id=cr.id,
                 site_id=site.id,
                 product_info=extracted["product_info"],
@@ -485,12 +302,13 @@ class TestExtractionPipelineIntegration:
             )
             db_session.add(record)
 
-        db_session.commit()
+        db_session.flush()
 
-        records = db_session.query(TExtractedPaymentInfo).filter_by(
+        records = db_session.query(ExtractedPaymentInfo).filter_by(
             site_id=site.id
         ).all()
         assert len(records) == 2
+
 
 
 # ===========================================================================
@@ -499,14 +317,14 @@ class TestExtractionPipelineIntegration:
 
 
 class TestPriceHistoryIntegration:
-    """Price history tracking with real SQLite DB (not mocked)."""
+    """Price history tracking with real PostgreSQL DB (not mocked)."""
 
     def test_record_first_price(self, db_session):
         """First price for a product has no previous price or change info."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
-        record = TPriceHistory(
+        record = PriceHistory(
             site_id=site.id,
             product_identifier="Widget [W-001]",
             price=1500.0,
@@ -515,9 +333,9 @@ class TestPriceHistoryIntegration:
             recorded_at=datetime(2024, 6, 1),
         )
         db_session.add(record)
-        db_session.commit()
+        db_session.flush()
 
-        saved = db_session.query(TPriceHistory).filter_by(
+        saved = db_session.query(PriceHistory).filter_by(
             site_id=site.id, product_identifier="Widget [W-001]"
         ).first()
         assert saved is not None
@@ -528,10 +346,10 @@ class TestPriceHistoryIntegration:
     def test_record_price_change_sequence(self, db_session):
         """Recording multiple prices tracks the change over time."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         # First price
-        r1 = TPriceHistory(
+        r1 = PriceHistory(
             site_id=site.id,
             product_identifier="Widget",
             price=1000.0,
@@ -543,7 +361,7 @@ class TestPriceHistoryIntegration:
         db_session.flush()
 
         # Second price with change info
-        r2 = TPriceHistory(
+        r2 = PriceHistory(
             site_id=site.id,
             product_identifier="Widget",
             price=1200.0,
@@ -555,11 +373,11 @@ class TestPriceHistoryIntegration:
             recorded_at=datetime(2024, 2, 1),
         )
         db_session.add(r2)
-        db_session.commit()
+        db_session.flush()
 
-        records = db_session.query(TPriceHistory).filter_by(
+        records = db_session.query(PriceHistory).filter_by(
             site_id=site.id, product_identifier="Widget"
-        ).order_by(TPriceHistory.recorded_at.asc()).all()
+        ).order_by(PriceHistory.recorded_at.asc()).all()
 
         assert len(records) == 2
         assert records[0].price == 1000.0
@@ -570,10 +388,10 @@ class TestPriceHistoryIntegration:
     def test_anomaly_detection_price_change_alert(self, db_session):
         """Significant price change generates an alert in the DB."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         # Simulate a 30% price increase alert
-        alert = TAlert(
+        alert = Alert(
             alert_type="price_change",
             severity="high",
             message="価格上昇アラート: Widget - 旧価格: 1000.00 JPY, 新価格: 1300.00 JPY, 変動率: +30.0%",
@@ -583,9 +401,9 @@ class TestPriceHistoryIntegration:
             change_percentage=30.0,
         )
         db_session.add(alert)
-        db_session.commit()
+        db_session.flush()
 
-        saved = db_session.query(TAlert).filter_by(
+        saved = db_session.query(Alert).filter_by(
             site_id=site.id, alert_type="price_change"
         ).first()
         assert saved is not None
@@ -597,9 +415,9 @@ class TestPriceHistoryIntegration:
     def test_anomaly_detection_zero_price_alert(self, db_session):
         """Price dropping to zero generates a critical alert."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
-        alert = TAlert(
+        alert = Alert(
             alert_type="price_zero",
             severity="critical",
             message="価格ゼロアラート: Widget - 旧価格: 500.00 JPY, 新価格: 0.00 JPY",
@@ -609,9 +427,9 @@ class TestPriceHistoryIntegration:
             change_percentage=-100.0,
         )
         db_session.add(alert)
-        db_session.commit()
+        db_session.flush()
 
-        saved = db_session.query(TAlert).filter_by(
+        saved = db_session.query(Alert).filter_by(
             site_id=site.id, alert_type="price_zero"
         ).first()
         assert saved is not None
@@ -621,9 +439,9 @@ class TestPriceHistoryIntegration:
     def test_anomaly_detection_new_product_alert(self, db_session):
         """New product detection generates an info alert."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
-        alert = TAlert(
+        alert = Alert(
             alert_type="new_product",
             severity="info",
             message="新商品検出: NewWidget - 価格: 2500.00 JPY",
@@ -631,9 +449,9 @@ class TestPriceHistoryIntegration:
             new_price=2500.0,
         )
         db_session.add(alert)
-        db_session.commit()
+        db_session.flush()
 
-        saved = db_session.query(TAlert).filter_by(
+        saved = db_session.query(Alert).filter_by(
             site_id=site.id, alert_type="new_product"
         ).first()
         assert saved is not None
@@ -643,10 +461,10 @@ class TestPriceHistoryIntegration:
     def test_price_history_date_range_query(self, db_session):
         """Price history can be filtered by date range."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         for month in [1, 3, 6, 9, 12]:
-            record = TPriceHistory(
+            record = PriceHistory(
                 site_id=site.id,
                 product_identifier="Widget",
                 price=1000.0 + month * 100,
@@ -655,20 +473,21 @@ class TestPriceHistoryIntegration:
                 recorded_at=datetime(2024, month, 15),
             )
             db_session.add(record)
-        db_session.commit()
+        db_session.flush()
 
         # Query for Q2 (April-June)
         start = datetime(2024, 4, 1)
         end = datetime(2024, 7, 1)
-        records = db_session.query(TPriceHistory).filter(
-            TPriceHistory.site_id == site.id,
-            TPriceHistory.product_identifier == "Widget",
-            TPriceHistory.recorded_at >= start,
-            TPriceHistory.recorded_at < end,
+        records = db_session.query(PriceHistory).filter(
+            PriceHistory.site_id == site.id,
+            PriceHistory.product_identifier == "Widget",
+            PriceHistory.recorded_at >= start,
+            PriceHistory.recorded_at < end,
         ).all()
 
         assert len(records) == 1
         assert records[0].recorded_at.month == 6
+
 
 
 # ===========================================================================
@@ -684,7 +503,7 @@ class TestAPIExtractedDataIntegration:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         # GET by crawl_result_id
         resp = client.get(f"/api/extracted-data/{cr.id}")
@@ -697,7 +516,7 @@ class TestAPIExtractedDataIntegration:
         resp = client.put(
             f"/api/extracted-data/{info.id}",
             json={"product_info": {"name": "Updated Product", "sku": "SKU-002"}},
-            headers={"X-API-Key": "test-api-key"},
+            headers={"X-API-Key": "dev-api-key"},
         )
         assert resp.status_code == 200
         assert resp.json()["product_info"]["name"] == "Updated Product"
@@ -709,7 +528,7 @@ class TestAPIExtractedDataIntegration:
         # Approve
         resp = client.post(
             f"/api/extracted-data/{info.id}/approve",
-            headers={"X-API-Key": "test-api-key"},
+            headers={"X-API-Key": "dev-api-key"},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "approved"
@@ -719,12 +538,12 @@ class TestAPIExtractedDataIntegration:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.post(
             f"/api/extracted-data/{info.id}/reject",
             json={"reason": "Price data is incorrect"},
-            headers={"X-API-Key": "test-api-key"},
+            headers={"X-API-Key": "dev-api-key"},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "rejected"
@@ -735,7 +554,7 @@ class TestAPIExtractedDataIntegration:
         for i in range(5):
             cr = _seed_crawl_result(db_session, site.id)
             _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         # Page 1, size 2
         resp = client.get(f"/api/extracted-data/site/{site.id}?page=1&page_size=2")
@@ -761,15 +580,17 @@ class TestAPIExtractedDataIntegration:
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id)
         info = _seed_extracted_info(db_session, cr.id, site.id)
-        db_session.commit()
+        db_session.flush()
 
         client.put(
             f"/api/extracted-data/{info.id}",
             json={"status": "approved"},
-            headers={"X-API-Key": "test-api-key"},
+            headers={"X-API-Key": "dev-api-key"},
         )
 
-        audit = db_session.query(TAuditLog).filter_by(
+        # Expire cached state so we see changes made by the API endpoint
+        db_session.expire_all()
+        audit = db_session.query(AuditLog).filter_by(
             resource_type="extracted_payment_info",
             resource_id=info.id,
         ).first()
@@ -790,7 +611,7 @@ class TestAPIPriceHistoryIntegration:
                             previous_price=1000.0,
                             price_change_amount=200.0,
                             price_change_percentage=20.0)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get(f"/api/price-history/{site.id}/Widget")
         assert resp.status_code == 200
@@ -811,7 +632,7 @@ class TestAPIPriceHistoryIntegration:
                             recorded_at=datetime(2024, 3, 15))
         _seed_price_history(db_session, site.id, "Widget", 1200.0,
                             recorded_at=datetime(2024, 6, 15))
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get(
             f"/api/price-history/{site.id}/Widget",
@@ -827,7 +648,7 @@ class TestAPIPriceHistoryIntegration:
     def test_price_history_empty(self, client, db_session):
         """Empty price history returns empty list."""
         _, site = _seed_site(db_session)
-        db_session.commit()
+        db_session.flush()
 
         resp = client.get(f"/api/price-history/{site.id}/nonexistent")
         assert resp.status_code == 200
@@ -845,14 +666,14 @@ class TestAPIExtractThenQueryIntegration:
 
         _, site = _seed_site(db_session)
         cr = _seed_crawl_result(db_session, site.id, html_content=_JSONLD_HTML)
-        db_session.commit()
+        db_session.flush()
 
         # Extract
         extractor = PaymentInfoExtractor()
         extracted = extractor.extract_payment_info(_JSONLD_HTML, cr.url)
 
         # Persist
-        record = TExtractedPaymentInfo(
+        record = ExtractedPaymentInfo(
             crawl_result_id=cr.id,
             site_id=site.id,
             product_info=extracted["product_info"],
@@ -866,7 +687,7 @@ class TestAPIExtractThenQueryIntegration:
             language=extracted["language"],
         )
         db_session.add(record)
-        db_session.commit()
+        db_session.flush()
 
         # Query via API
         resp = client.get(f"/api/extracted-data/{cr.id}")

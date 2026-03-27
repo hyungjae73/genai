@@ -8,6 +8,7 @@ import os
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 
@@ -49,10 +50,58 @@ async def root():
     }
 
 
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Extended health check endpoint (Requirements 8.1, 8.4)."""
+    import os
+    from datetime import datetime, timezone
+    from sqlalchemy import text
+    from fastapi.responses import JSONResponse
+
+    health = {
+        "status": "healthy",
+        "version": os.getenv("IMAGE_TAG", "dev"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "database": "unknown",
+            "redis": "unknown"
+        }
+    }
+
+    # PostgreSQL connection check (sync session — matches existing database.py)
+    try:
+        from src.database import SessionLocal
+        session = SessionLocal()
+        try:
+            session.execute(text("SELECT 1"))
+            health["services"]["database"] = "healthy"
+        finally:
+            session.close()
+    except Exception as e:
+        health["status"] = "unhealthy"
+        health["services"]["database"] = {
+            "status": f"unhealthy: {str(e)}",
+            "error_code": "PCM-E201",
+        }
+
+    # Redis connection check
+    try:
+        import redis as redis_lib
+        redis_client = redis_lib.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        redis_client.ping()
+        health["services"]["redis"] = "healthy"
+        redis_client.close()
+    except Exception as e:
+        health["status"] = "unhealthy"
+        health["services"]["redis"] = {
+            "status": f"unhealthy: {str(e)}",
+            "error_code": "PCM-E301",
+        }
+
+    status_code = 200 if health["status"] == "healthy" else 503
+    return JSONResponse(content=health, status_code=status_code)
+
 
 
 # Import and include routers
@@ -70,6 +119,7 @@ from src.api.crawl import router as crawl_router
 from src.api.extracted_data import router as extracted_data_router
 from src.api.extracted_data import price_history_router
 from src.api.audit_logs import router as audit_logs_router
+from src.api.schedules import router as schedules_router
 
 app.include_router(customers_router, prefix="/api/customers", tags=["customers"])
 app.include_router(sites_router, prefix="/api/sites", tags=["sites"])
@@ -85,3 +135,10 @@ app.include_router(crawl_router, prefix="/api/crawl", tags=["crawl"])
 app.include_router(extracted_data_router, prefix="/api/extracted-data", tags=["extracted-data"])
 app.include_router(price_history_router, prefix="/api/price-history", tags=["price-history"])
 app.include_router(audit_logs_router, prefix="/api/audit-logs", tags=["audit-logs"])
+app.include_router(schedules_router, prefix="/api", tags=["schedules"])
+
+# Serve screenshot files as static assets so the frontend can load them
+# via their filesystem path (e.g. /screenshots/2024/03/42/xxx.png).
+_screenshot_dir = os.getenv("SCREENSHOT_DIR", "screenshots")
+if os.path.isdir(_screenshot_dir):
+    app.mount("/screenshots", StaticFiles(directory=_screenshot_dir), name="screenshots")
