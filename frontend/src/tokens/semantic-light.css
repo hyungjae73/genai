@@ -1,0 +1,39 @@
+/* ライトモード — セマンティックトークン */
+:root, [data-theme="light"] {
+  /* 背景 */
+  --color-bg-primary: var(--gray-50);
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-hover: var(--gray-50);
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+
+  /* テキスト */
+  --color-text-primary: var(--gray-900);
+  --color-text-secondary: var(--gray-500);
+  --color-text-inverse: #ffffff;
+
+  /* ブランド/アクション */
+  --color-accent: var(--blue-600);
+  --color-accent-hover: var(--blue-700);
+  --color-accent-subtle: var(--blue-50);
+
+  /* ステータス */
+  --color-success: var(--green-500);
+  --color-success-subtle: var(--green-50);
+  --color-success-text: var(--green-700);
+  --color-warning: var(--amber-500);
+  --color-warning-subtle: var(--amber-50);
+  --color-warning-text: var(--amber-700);
+  --color-danger: var(--red-500);
+  --color-danger-subtle: var(--red-50);
+  --color-danger-text: var(--red-700);
+
+  /* ボーダー */
+  --color-border: var(--gray-200);
+  --color-border-focus: var(--blue-600);
+
+  /* ナビゲーション */
+  --color-nav-bg: #ffffff;
+  --color-nav-active: var(--blue-50);
+  --color-nav-text: var(--gray-500);
+  --color-nav-text-active: var(--blue-600);
+}

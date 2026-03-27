@@ -1,0 +1,44 @@
+/* Card — セマンティックトークンのみ使用 */
+
+.card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+/* --- Padding --- */
+.card--pad-sm {
+  padding: var(--space-3);
+}
+
+.card--pad-md {
+  padding: var(--space-6);
+}
+
+.card--pad-lg {
+  padding: var(--space-8);
+}
+
+/* --- Border-left variants --- */
+.card--border-success {
+  border-left: 4px solid var(--color-success);
+}
+
+.card--border-warning {
+  border-left: 4px solid var(--color-warning);
+}
+
+.card--border-danger {
+  border-left: 4px solid var(--color-danger);
+}
+
+.card--border-info {
+  border-left: 4px solid var(--color-accent);
+}
+
+/* --- Hoverable --- */
+.card--hoverable:hover {
+  box-shadow: var(--shadow-md);
+}
