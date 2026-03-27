@@ -46,6 +46,15 @@ const renderVerification = () =>
     </MemoryRouter>
   );
 
+/** Helper: select a site from the filterable Select combobox */
+async function selectSite(name: string) {
+  const combobox = screen.getByRole('combobox', { name: '監視対象サイト' });
+  fireEvent.focus(combobox);
+  // The listbox opens on focus; find and click the option
+  const option = await screen.findByRole('option', { name });
+  fireEvent.mouseDown(option);
+}
+
 describe('Verification Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,12 +71,15 @@ describe('Verification Component', () => {
     await waitFor(() => {
       expect(getSites).toHaveBeenCalled();
     });
-    const select = screen.getByLabelText('監視対象サイト:');
-    expect(select).toBeInTheDocument();
-    // Active site should be present
-    expect(screen.getByText('Test Site')).toBeInTheDocument();
+    const combobox = screen.getByRole('combobox', { name: '監視対象サイト' });
+    expect(combobox).toBeInTheDocument();
+
+    // Open the listbox
+    fireEvent.focus(combobox);
+    // Active site should be present as an option
+    expect(screen.getByRole('option', { name: 'Test Site' })).toBeInTheDocument();
     // Inactive site should not be present
-    expect(screen.queryByText('Inactive Site')).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Inactive Site' })).not.toBeInTheDocument();
   });
 
   it('disables run button when no site is selected', async () => {
@@ -79,15 +91,13 @@ describe('Verification Component', () => {
   });
 
   it('disables run button when loading', async () => {
-    (triggerVerification as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {})); // never resolves
+    (triggerVerification as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
     (getVerificationStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'processing', result: null });
 
     renderVerification();
     await waitFor(() => expect(getSites).toHaveBeenCalled());
 
-    // Select a site
-    const select = screen.getByLabelText('監視対象サイト:');
-    fireEvent.change(select, { target: { value: '1' } });
+    await selectSite('Test Site');
 
     const button = screen.getByText('検証実行');
     fireEvent.click(button);
@@ -110,9 +120,7 @@ describe('Verification Component', () => {
     renderVerification();
     await waitFor(() => expect(getSites).toHaveBeenCalled());
 
-    // Select site and run
-    const select = screen.getByLabelText('監視対象サイト:');
-    fireEvent.change(select, { target: { value: '1' } });
+    await selectSite('Test Site');
     fireEvent.click(screen.getByText('検証実行'));
 
     await waitFor(() => {
@@ -128,8 +136,7 @@ describe('Verification Component', () => {
     renderVerification();
     await waitFor(() => expect(getSites).toHaveBeenCalled());
 
-    const select = screen.getByLabelText('監視対象サイト:');
-    fireEvent.change(select, { target: { value: '1' } });
+    await selectSite('Test Site');
     fireEvent.click(screen.getByText('検証実行'));
 
     await waitFor(() => {

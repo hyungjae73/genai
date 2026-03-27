@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { CustomerWithSites } from '../../pages/HierarchyView';
+import type { CustomerWithSites } from '../../pages/SiteManagement';
+import { Badge } from '../ui/Badge/Badge';
 import SiteRow from './SiteRow';
 
 export interface CustomerGroupProps {
@@ -43,9 +44,9 @@ const CustomerGroup = ({ customer, isExpanded, onToggle, onSiteUpdate }: Custome
         {customer.company_name && (
           <span className="company-name">({customer.company_name})</span>
         )}
-        <span className={customer.is_active ? 'badge-active' : 'badge-inactive'}>
+        <Badge variant={customer.is_active ? 'success' : 'neutral'} size="sm">
           {customer.is_active ? '有効' : '無効'}
-        </span>
+        </Badge>
         <span className="site-count">{customer.siteCount} サイト</span>
       </div>
 

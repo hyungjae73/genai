@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { getSites, getSiteScreenshots, uploadScreenshot, deleteScreenshot, getScreenshotUrl, type Site, type Screenshot } from '../services/api';
+import { getSites, getSiteScreenshots, uploadScreenshot, deleteScreenshot, getScreenshotUrl, captureScreenshot, type Site, type Screenshot } from '../services/api';
+import { Select } from '../components/ui/Select/Select';
+import { Card } from '../components/ui/Card/Card';
+import { Modal } from '../components/ui/Modal/Modal';
+import { Button } from '../components/ui/Button/Button';
+import { Badge } from '../components/ui/Badge/Badge';
+import './Screenshots.css';
 
 const Screenshots = () => {
   const [sites, setSites] = useState<Site[]>([]);
@@ -8,7 +14,7 @@ const Screenshots = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
-  
+
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadSiteId, setUploadSiteId] = useState<number>(0);
@@ -16,7 +22,7 @@ const Screenshots = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  
+
   // Capture modal state
   const [showCaptureModal, setShowCaptureModal] = useState(false);
   const [captureSiteId, setCaptureSiteId] = useState<number>(0);
@@ -24,7 +30,7 @@ const Screenshots = () => {
   const [captureFormat, setCaptureFormat] = useState<'png' | 'pdf'>('png');
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
-  
+
   // View modal state
   const [viewingScreenshot, setViewingScreenshot] = useState<Screenshot | null>(null);
 
@@ -98,13 +104,13 @@ const Screenshots = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const ext = file.name.split('.').pop()?.toLowerCase();
-      
+
       if (ext !== 'png' && ext !== 'pdf') {
         setUploadError('PNG または PDF ファイルのみアップロード可能です');
         setUploadFile(null);
         return;
       }
-      
+
       setUploadFile(file);
       setUploadError(null);
     }
@@ -115,7 +121,7 @@ const Screenshots = () => {
       setUploadError('ファイルを選択してください');
       return;
     }
-    
+
     if (uploadSiteId === 0) {
       setUploadError('サイトを選択してください');
       return;
@@ -124,11 +130,11 @@ const Screenshots = () => {
     try {
       setUploading(true);
       await uploadScreenshot(uploadSiteId, uploadType, uploadFile);
-      
+
       if (selectedSite === uploadSiteId) {
         await fetchScreenshots(uploadSiteId);
       }
-      
+
       closeUploadModal();
     } catch (err: any) {
       setUploadError(err.response?.data?.detail || 'アップロードに失敗しました');
@@ -147,11 +153,11 @@ const Screenshots = () => {
     try {
       setCapturing(true);
       await captureScreenshot(captureSiteId, captureType, captureFormat);
-      
+
       if (selectedSite === captureSiteId) {
         await fetchScreenshots(captureSiteId);
       }
-      
+
       closeCaptureModal();
     } catch (err: any) {
       setCaptureError(err.response?.data?.detail || 'キャプチャに失敗しました');
@@ -186,12 +192,13 @@ const Screenshots = () => {
   };
 
   const getTypeBadge = (type: string) => {
-    const typeMap: Record<string, { label: string; className: string }> = {
-      baseline: { label: '初期状態', className: 'type-baseline' },
-      violation: { label: '異常状態', className: 'type-violation' },
-    };
-    const typeInfo = typeMap[type] || { label: type, className: '' };
-    return <span className={`type-badge ${typeInfo.className}`}>{typeInfo.label}</span>;
+    if (type === 'baseline') {
+      return <Badge variant="info" size="sm">初期状態</Badge>;
+    }
+    if (type === 'violation') {
+      return <Badge variant="danger" size="sm">異常状態</Badge>;
+    }
+    return <Badge variant="neutral" size="sm">{type}</Badge>;
   };
 
   if (loading && sites.length === 0) {
@@ -206,27 +213,29 @@ const Screenshots = () => {
     <div className="screenshots">
       <div className="page-header">
         <h1>スクリーンショット管理</h1>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="btn btn-primary" onClick={() => openCaptureModal()}>
+        <div className="page-header-actions">
+          <Button variant="primary" size="md" onClick={() => openCaptureModal()}>
             📸 ページをキャプチャ
-          </button>
-          <button className="btn btn-secondary" onClick={() => openUploadModal()}>
+          </Button>
+          <Button variant="secondary" size="md" onClick={() => openUploadModal()}>
             📤 ファイルアップロード
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="filters">
-        <select
-          value={selectedSite || ''}
-          onChange={(e) => setSelectedSite(e.target.value ? Number(e.target.value) : null)}
-          className="site-filter"
-        >
-          <option value="">サイトを選択</option>
-          {sites.map(site => (
-            <option key={site.id} value={site.id}>{site.name}</option>
-          ))}
-        </select>
+        <Select
+          label="サイト"
+          value={selectedSite ? String(selectedSite) : ''}
+          onChange={(val) => setSelectedSite(val ? Number(val) : null)}
+          options={[
+            { value: '', label: 'サイトを選択' },
+            ...sites.map(site => ({ value: String(site.id), label: site.name })),
+          ]}
+          aria-label="サイトフィルター"
+          filterable
+          placeholder="サイト名で絞り込み..."
+        />
 
         <select
           value={typeFilter}
@@ -242,48 +251,44 @@ const Screenshots = () => {
       {selectedSite ? (
         <div className="screenshots-grid">
           {screenshots.map(screenshot => (
-            <div key={screenshot.id} className="screenshot-card">
-              <div className="screenshot-preview" onClick={() => openViewer(screenshot)}>
-                {screenshot.file_format === 'png' ? (
-                  <img 
-                    src={getScreenshotUrl(screenshot.id)} 
-                    alt={`${screenshot.site_name} - ${screenshot.screenshot_type}`}
-                  />
-                ) : (
-                  <div className="pdf-preview">
-                    <span className="pdf-icon">📄</span>
-                    <span>PDF</span>
+            <Card key={screenshot.id} padding="md" hoverable>
+              <div className="screenshot-card-inner">
+                <div className="screenshot-preview" onClick={() => openViewer(screenshot)}>
+                  {screenshot.file_format === 'png' ? (
+                    <img
+                      src={getScreenshotUrl(screenshot.id)}
+                      alt={`${screenshot.site_name} - ${screenshot.screenshot_type}`}
+                    />
+                  ) : (
+                    <div className="pdf-preview">
+                      <span className="pdf-icon">📄</span>
+                      <span>PDF</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="screenshot-info">
+                  <div className="screenshot-header">
+                    {getTypeBadge(screenshot.screenshot_type)}
+                    <span className="screenshot-format">{screenshot.file_format.toUpperCase()}</span>
                   </div>
-                )}
-              </div>
-              
-              <div className="screenshot-info">
-                <div className="screenshot-header">
-                  {getTypeBadge(screenshot.screenshot_type)}
-                  <span className="screenshot-format">{screenshot.file_format.toUpperCase()}</span>
-                </div>
-                <p className="screenshot-site">{screenshot.site_name}</p>
-                <p className="screenshot-date">
-                  {new Date(screenshot.crawled_at).toLocaleString('ja-JP')}
-                </p>
-                <div className="screenshot-actions">
-                  <button 
-                    className="btn btn-sm btn-secondary" 
-                    onClick={() => openViewer(screenshot)}
-                  >
-                    表示
-                  </button>
-                  <button 
-                    className="btn btn-sm btn-danger" 
-                    onClick={() => handleDelete(screenshot)}
-                  >
-                    削除
-                  </button>
+                  <p className="screenshot-site">{screenshot.site_name}</p>
+                  <p className="screenshot-date">
+                    {new Date(screenshot.crawled_at).toLocaleString('ja-JP')}
+                  </p>
+                  <div className="screenshot-actions">
+                    <Button variant="secondary" size="sm" onClick={() => openViewer(screenshot)}>
+                      表示
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => handleDelete(screenshot)}>
+                      削除
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
-          
+
           {screenshots.length === 0 && (
             <div className="no-data">スクリーンショットがありません</div>
           )}
@@ -295,188 +300,181 @@ const Screenshots = () => {
       )}
 
       {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="modal-overlay" onClick={closeUploadModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>スクリーンショットアップロード</h2>
-              <button className="modal-close" onClick={closeUploadModal}>×</button>
-            </div>
-
-            <div className="upload-form">
-              <div className="form-group">
-                <label htmlFor="upload_site">サイト *</label>
-                <select
-                  id="upload_site"
-                  value={uploadSiteId}
-                  onChange={(e) => setUploadSiteId(Number(e.target.value))}
-                  required
-                >
-                  <option value={0}>サイトを選択</option>
-                  {sites.map(site => (
-                    <option key={site.id} value={site.id}>{site.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="upload_type">タイプ *</label>
-                <select
-                  id="upload_type"
-                  value={uploadType}
-                  onChange={(e) => setUploadType(e.target.value as 'baseline' | 'violation')}
-                  required
-                >
-                  <option value="baseline">初期状態</option>
-                  <option value="violation">異常状態</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="upload_file">ファイル (PNG または PDF) *</label>
-                <input
-                  type="file"
-                  id="upload_file"
-                  accept=".png,.pdf"
-                  onChange={handleFileChange}
-                  required
-                />
-                {uploadFile && (
-                  <p className="file-info">選択: {uploadFile.name}</p>
-                )}
-              </div>
-
-              {uploadError && (
-                <div className="form-error">{uploadError}</div>
-              )}
-
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={closeUploadModal}
-                  disabled={uploading}
-                >
-                  キャンセル
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary"
-                  onClick={handleUpload}
-                  disabled={uploading || !uploadFile}
-                >
-                  {uploading ? 'アップロード中...' : 'アップロード'}
-                </button>
-              </div>
-            </div>
+      <Modal
+        isOpen={showUploadModal}
+        onClose={closeUploadModal}
+        title="スクリーンショットアップロード"
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" size="md" onClick={closeUploadModal} disabled={uploading}>
+              キャンセル
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleUpload}
+              disabled={uploading || !uploadFile}
+              loading={uploading}
+            >
+              アップロード
+            </Button>
+          </>
+        }
+      >
+        <div className="upload-form">
+          <div className="form-group">
+            <Select
+              label="サイト *"
+              value={uploadSiteId ? String(uploadSiteId) : '0'}
+              onChange={(val) => setUploadSiteId(Number(val))}
+              options={[
+                { value: '0', label: 'サイトを選択' },
+                ...sites.map(site => ({ value: String(site.id), label: site.name })),
+              ]}
+              aria-label="アップロード先サイト"
+              filterable
+              placeholder="サイト名で絞り込み..."
+            />
           </div>
+
+          <div className="form-group">
+            <label htmlFor="upload_type">タイプ *</label>
+            <select
+              id="upload_type"
+              value={uploadType}
+              onChange={(e) => setUploadType(e.target.value as 'baseline' | 'violation')}
+              required
+            >
+              <option value="baseline">初期状態</option>
+              <option value="violation">異常状態</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="upload_file">ファイル (PNG または PDF) *</label>
+            <input
+              type="file"
+              id="upload_file"
+              accept=".png,.pdf"
+              onChange={handleFileChange}
+              required
+            />
+            {uploadFile && (
+              <p className="file-info">選択: {uploadFile.name}</p>
+            )}
+          </div>
+
+          {uploadError && (
+            <div className="form-error">{uploadError}</div>
+          )}
         </div>
-      )}
+      </Modal>
 
       {/* Capture Modal */}
-      {showCaptureModal && (
-        <div className="modal-overlay" onClick={closeCaptureModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>ページキャプチャ</h2>
-              <button className="modal-close" onClick={closeCaptureModal}>×</button>
-            </div>
-
-            <div className="upload-form">
-              <div className="form-group">
-                <label htmlFor="capture_site">サイト *</label>
-                <select
-                  id="capture_site"
-                  value={captureSiteId}
-                  onChange={(e) => setCaptureSiteId(Number(e.target.value))}
-                  required
-                >
-                  <option value={0}>サイトを選択</option>
-                  {sites.map(site => (
-                    <option key={site.id} value={site.id}>{site.name}</option>
-                  ))}
-                </select>
-                {captureSiteId > 0 && (
-                  <p className="file-info">
-                    URL: {sites.find(s => s.id === captureSiteId)?.url}
-                  </p>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="capture_type">タイプ *</label>
-                <select
-                  id="capture_type"
-                  value={captureType}
-                  onChange={(e) => setCaptureType(e.target.value as 'baseline' | 'violation')}
-                  required
-                >
-                  <option value="baseline">初期状態</option>
-                  <option value="violation">異常状態</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="capture_format">ファイル形式 *</label>
-                <select
-                  id="capture_format"
-                  value={captureFormat}
-                  onChange={(e) => setCaptureFormat(e.target.value as 'png' | 'pdf')}
-                  required
-                >
-                  <option value="png">PNG (画像)</option>
-                  <option value="pdf">PDF (文書)</option>
-                </select>
-              </div>
-
-              {captureError && (
-                <div className="form-error">{captureError}</div>
-              )}
-
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={closeCaptureModal}
-                  disabled={capturing}
-                >
-                  キャンセル
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary"
-                  onClick={handleCapture}
-                  disabled={capturing || captureSiteId === 0}
-                >
-                  {capturing ? 'キャプチャ中...' : 'キャプチャ実行'}
-                </button>
-              </div>
-            </div>
+      <Modal
+        isOpen={showCaptureModal}
+        onClose={closeCaptureModal}
+        title="ページキャプチャ"
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" size="md" onClick={closeCaptureModal} disabled={capturing}>
+              キャンセル
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleCapture}
+              disabled={capturing || captureSiteId === 0}
+              loading={capturing}
+            >
+              キャプチャ実行
+            </Button>
+          </>
+        }
+      >
+        <div className="upload-form">
+          <div className="form-group">
+            <Select
+              label="サイト *"
+              value={captureSiteId ? String(captureSiteId) : '0'}
+              onChange={(val) => setCaptureSiteId(Number(val))}
+              options={[
+                { value: '0', label: 'サイトを選択' },
+                ...sites.map(site => ({ value: String(site.id), label: site.name })),
+              ]}
+              aria-label="キャプチャ対象サイト"
+              filterable
+              placeholder="サイト名で絞り込み..."
+            />
+            {captureSiteId > 0 && (
+              <p className="file-info">
+                URL: {sites.find(s => s.id === captureSiteId)?.url}
+              </p>
+            )}
           </div>
+
+          <div className="form-group">
+            <label htmlFor="capture_type">タイプ *</label>
+            <select
+              id="capture_type"
+              value={captureType}
+              onChange={(e) => setCaptureType(e.target.value as 'baseline' | 'violation')}
+              required
+            >
+              <option value="baseline">初期状態</option>
+              <option value="violation">異常状態</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="capture_format">ファイル形式 *</label>
+            <select
+              id="capture_format"
+              value={captureFormat}
+              onChange={(e) => setCaptureFormat(e.target.value as 'png' | 'pdf')}
+              required
+            >
+              <option value="png">PNG (画像)</option>
+              <option value="pdf">PDF (文書)</option>
+            </select>
+          </div>
+
+          {captureError && (
+            <div className="form-error">{captureError}</div>
+          )}
         </div>
-      )}
+      </Modal>
 
       {/* View Modal */}
-      {viewingScreenshot && (
-        <div className="modal-overlay" onClick={closeViewer}>
-          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h2>{viewingScreenshot.site_name}</h2>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-                  {getTypeBadge(viewingScreenshot.screenshot_type)}
-                  <span className="screenshot-format">{viewingScreenshot.file_format.toUpperCase()}</span>
-                </div>
-              </div>
-              <button className="modal-close" onClick={closeViewer}>×</button>
+      <Modal
+        isOpen={!!viewingScreenshot}
+        onClose={closeViewer}
+        title={viewingScreenshot?.site_name ?? ''}
+        size="lg"
+        footer={
+          <div className="screenshot-modal-footer">
+            <p className="screenshot-date">
+              撮影日時: {viewingScreenshot ? new Date(viewingScreenshot.crawled_at).toLocaleString('ja-JP') : ''}
+            </p>
+            <Button variant="secondary" size="md" onClick={closeViewer}>
+              閉じる
+            </Button>
+          </div>
+        }
+      >
+        {viewingScreenshot && (
+          <>
+            <div className="screenshot-view-subtitle">
+              {getTypeBadge(viewingScreenshot.screenshot_type)}
+              <span className="screenshot-format">{viewingScreenshot.file_format.toUpperCase()}</span>
             </div>
-
             <div className="screenshot-viewer">
               {viewingScreenshot.file_format === 'png' ? (
-                <img 
-                  src={getScreenshotUrl(viewingScreenshot.id)} 
+                <img
+                  src={getScreenshotUrl(viewingScreenshot.id)}
                   alt={`${viewingScreenshot.site_name} - ${viewingScreenshot.screenshot_type}`}
-                  style={{ width: '100%', height: 'auto' }}
                 />
               ) : (
                 <iframe
@@ -486,18 +484,9 @@ const Screenshots = () => {
                 />
               )}
             </div>
-
-            <div className="modal-footer">
-              <p className="screenshot-date">
-                撮影日時: {new Date(viewingScreenshot.crawled_at).toLocaleString('ja-JP')}
-              </p>
-              <button className="btn btn-secondary" onClick={closeViewer}>
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 };

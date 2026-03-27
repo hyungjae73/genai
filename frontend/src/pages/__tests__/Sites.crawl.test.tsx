@@ -63,7 +63,9 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      // Table component renders both desktop and mobile views
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
   });
 
@@ -75,10 +77,11 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
-    const crawlButton = screen.getByText('今すぐクロール');
+    const crawlButton = screen.getAllByText('今すぐクロール')[0];
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
@@ -94,14 +97,16 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
-    const crawlButton = screen.getByText('今すぐクロール');
+    const crawlButton = screen.getAllByText('今すぐクロール')[0];
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
-      expect(screen.getByText('クロール中...')).toBeInTheDocument();
+      const spinners = screen.getAllByText('クロール中...');
+      expect(spinners.length).toBeGreaterThan(0);
     });
   });
 
@@ -113,10 +118,11 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
-    const crawlButton = screen.getByText('今すぐクロール');
+    const crawlButton = screen.getAllByText('今すぐクロール')[0];
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
@@ -132,10 +138,11 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
-    const crawlButton = screen.getByText('今すぐクロール');
+    const crawlButton = screen.getAllByText('今すぐクロール')[0];
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
@@ -157,10 +164,11 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
-    const crawlButton = screen.getByText('今すぐクロール');
+    const crawlButton = screen.getAllByText('今すぐクロール')[0];
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
@@ -176,14 +184,16 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
-    const crawlButton = screen.getByText('今すぐクロール') as HTMLButtonElement;
+    const crawlButton = screen.getAllByText('今すぐクロール')[0] as HTMLButtonElement;
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
-      const button = screen.getByText('クロール中...').closest('button') as HTMLButtonElement;
+      const spinners = screen.getAllByText('クロール中...');
+      const button = spinners[0].closest('button') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
     });
   });
@@ -196,12 +206,13 @@ describe('Sites - Crawl Button', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('今すぐクロール')).toBeInTheDocument();
+      const buttons = screen.getAllByText('今すぐクロール');
+      expect(buttons.length).toBeGreaterThan(0);
     });
 
     const initialCallCount = (api.getSites as any).mock.calls.length;
 
-    const crawlButton = screen.getByText('今すぐクロール');
+    const crawlButton = screen.getAllByText('今すぐクロール')[0];
     fireEvent.click(crawlButton);
 
     await waitFor(() => {
@@ -269,7 +280,10 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+      // Table component renders both desktop table and mobile card views;
+      // use getAllByText and find the BUTTON element.
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      const crawlDateButton = elements.find(el => el.tagName === 'BUTTON')!;
       expect(crawlDateButton).toBeInTheDocument();
       expect(crawlDateButton.tagName).toBe('BUTTON');
     });
@@ -279,8 +293,9 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      const noCrawlText = screen.getByText('未実施');
-      expect(noCrawlText).toBeInTheDocument();
+      const elements = screen.getAllByText('未実施');
+      expect(elements.length).toBeGreaterThan(0);
+      expect(elements[0]).toBeInTheDocument();
     });
   });
 
@@ -290,10 +305,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -307,10 +323,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -328,10 +345,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -352,10 +370,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -371,10 +390,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -392,10 +412,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -409,10 +430,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {
@@ -431,13 +453,15 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('未実施')).toBeInTheDocument();
+      const elements = screen.getAllByText('未実施');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
     // Find the site row with "未実施" and try to click it
     // Since "未実施" is not a button, this test verifies the behavior
     // The actual implementation prevents clicking on "未実施" text
-    expect(screen.getByText('未実施').tagName).not.toBe('BUTTON');
+    const noCrawlElements = screen.getAllByText('未実施');
+    expect(noCrawlElements[0].tagName).not.toBe('BUTTON');
   });
 
   it('should not display screenshot section when screenshot_path is null', async () => {
@@ -450,10 +474,11 @@ describe('Sites - Crawl Result Link', () => {
     renderSites();
 
     await waitFor(() => {
-      expect(screen.getByText('2024/1/1 21:00:00')).toBeInTheDocument();
+      const elements = screen.getAllByText('2024/1/1 21:00:00');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    const crawlDateButton = screen.getByText('2024/1/1 21:00:00');
+    const crawlDateButton = screen.getAllByText('2024/1/1 21:00:00').find(el => el.tagName === 'BUTTON')!;
     fireEvent.click(crawlDateButton);
 
     await waitFor(() => {

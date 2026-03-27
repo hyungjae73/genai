@@ -13,6 +13,9 @@ import {
 import type { ChartOptions } from 'chart.js';
 import { getStatistics, getMonitoringHistory, type Statistics, type MonitoringHistory } from '../services/api';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { Card } from '../components/ui/Card/Card';
+import { HelpButton } from '../components/ui/HelpButton/HelpButton';
+import './Dashboard.css';
 
 ChartJS.register(
   CategoryScale,
@@ -95,34 +98,61 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard">
-      <h1>統計ダッシュボード</h1>
-      
+      <div className="page-header">
+        <h1>統計ダッシュボード <HelpButton title="統計ダッシュボードの使い方">
+          <div className="help-content">
+            <h3>ユーザーストーリー</h3>
+            <p>監視状況の全体像を把握したい</p>
+
+            <h3>統計カード</h3>
+            <ul>
+              <li><strong>監視サイト数</strong>: 現在監視中のサイト総数とアクティブなサイト数を表示します</li>
+              <li><strong>違反数</strong>: 検出された違反の総数と重大な違反数を表示します</li>
+              <li><strong>成功率</strong>: クロールの成功率をパーセンテージで表示します</li>
+              <li><strong>偽サイト検知数</strong>: 検知された偽サイトの総数と未解決件数を表示します</li>
+            </ul>
+
+            <h3>違反数推移グラフ</h3>
+            <p>直近のクロール結果から違反数の推移を折れ線グラフで表示します。トレンドの把握にご活用ください。</p>
+
+            <h3>データの自動更新</h3>
+            <p>ダッシュボードのデータは30秒ごとに自動更新されます。手動でのリロードは不要です。</p>
+          </div>
+        </HelpButton></h1>
+      </div>
+
       <div className="stats-grid">
-        <div className="stat-card">
-          <h3>監視サイト数</h3>
+        <Card hoverable>
+          <h3 className="stat-card-title">監視サイト数</h3>
           <p className="stat-value">{statistics.total_sites}</p>
           <p className="stat-label">アクティブ: {statistics.active_sites}</p>
-        </div>
-        
-        <div className="stat-card">
-          <h3>違反数</h3>
+        </Card>
+
+        <Card hoverable>
+          <h3 className="stat-card-title">違反数</h3>
           <p className="stat-value">{statistics.total_violations}</p>
           <p className="stat-label">重大: {statistics.high_severity_violations}</p>
-        </div>
-        
-        <div className="stat-card">
-          <h3>成功率</h3>
+        </Card>
+
+        <Card hoverable>
+          <h3 className="stat-card-title">成功率</h3>
           <p className="stat-value">{statistics.success_rate.toFixed(1)}%</p>
-        </div>
-        
-        <div className="stat-card">
-          <h3>最終クロール</h3>
+        </Card>
+
+        <Card hoverable>
+          <h3 className="stat-card-title">最終クロール</h3>
           <p className="stat-value">
-            {statistics.last_crawl 
+            {statistics.last_crawl
               ? new Date(statistics.last_crawl).toLocaleString('ja-JP')
               : '未実施'}
           </p>
-        </div>
+        </Card>
+
+        <Card hoverable>
+          <h3 className="stat-card-title">偽サイト検知</h3>
+          <p className="stat-value">{statistics.fake_site_alerts ?? 0}</p>
+          <p className="stat-label">未解決: {statistics.unresolved_fake_site_alerts ?? 0}</p>
+        </Card>
       </div>
 
       {history.length > 0 && (
@@ -132,6 +162,6 @@ const Dashboard = () => {
       )}
     </div>
   );
-};
+}
 
 export default Dashboard;

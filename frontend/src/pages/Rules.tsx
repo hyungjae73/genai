@@ -1,4 +1,9 @@
 import { useState } from 'react';
+import { Card } from '../components/ui/Card/Card';
+import { Badge } from '../components/ui/Badge/Badge';
+import { Select } from '../components/ui/Select/Select';
+import { HelpButton } from '../components/ui/HelpButton/HelpButton';
+import './Rules.css';
 
 interface ComplianceRule {
   id: string;
@@ -9,6 +14,18 @@ interface ComplianceRule {
   enabled: boolean;
   checkPoints: string[];
 }
+
+const severityVariantMap: Record<string, 'danger' | 'warning' | 'neutral'> = {
+  high: 'danger',
+  medium: 'warning',
+  low: 'neutral',
+};
+
+const severityLabelMap: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+};
 
 const Rules = () => {
   const [rules] = useState<ComplianceRule[]>([
@@ -85,19 +102,14 @@ const Rules = () => {
 
   const categories = ['all', ...Array.from(new Set(rules.map(r => r.category)))];
 
-  const filteredRules = selectedCategory === 'all' 
-    ? rules 
+  const filteredRules = selectedCategory === 'all'
+    ? rules
     : rules.filter(r => r.category === selectedCategory);
 
-  const getSeverityBadge = (severity: string) => {
-    const severityMap: Record<string, { label: string; className: string }> = {
-      low: { label: '低', className: 'severity-low' },
-      medium: { label: '中', className: 'severity-medium' },
-      high: { label: '高', className: 'severity-high' },
-    };
-    const severityInfo = severityMap[severity] || { label: severity, className: '' };
-    return <span className={`severity-badge ${severityInfo.className}`}>{severityInfo.label}</span>;
-  };
+  const categoryOptions = categories.map(c => ({
+    value: c,
+    label: c === 'all' ? 'すべてのカテゴリ' : c,
+  }));
 
   const toggleExpand = (ruleId: string) => {
     setExpandedRule(expandedRule === ruleId ? null : ruleId);
@@ -106,41 +118,72 @@ const Rules = () => {
   return (
     <div className="rules">
       <div className="page-header">
-        <h1>コンプライアンスチェックルール</h1>
+        <h1>コンプライアンスチェックルール <HelpButton title="チェックルールの使い方">
+          <div className="help-content">
+            <h3>ユーザーストーリー</h3>
+            <p>監視システムがどのような項目をチェックしているか確認したい</p>
+
+            <h3>カテゴリフィルター</h3>
+            <p>カテゴリフィルターでルールを絞り込むことができます。「すべてのカテゴリ」を選択するとすべてのルールが表示されます。</p>
+
+            <h3>重要度と有効/無効</h3>
+            <p>各ルールには重要度（高/中/低）と有効/無効の状態が表示されます。重要度はルール違反時の影響度を示します。</p>
+
+            <h3>チェックポイントの詳細</h3>
+            <p>ルールを展開するとチェックポイントの詳細が表示されます。各チェックポイントは監視時に確認される具体的な項目です。</p>
+
+            <h3>5つのカテゴリ</h3>
+            <ul>
+              <li><strong>価格チェック</strong>: 契約価格との一致を確認</li>
+              <li><strong>決済方法チェック</strong>: 許可された決済方法の提供を確認</li>
+              <li><strong>手数料チェック</strong>: 手数料の妥当性を確認</li>
+              <li><strong>サブスクリプションチェック</strong>: サブスクリプション条件の表示を確認</li>
+              <li><strong>透明性チェック</strong>: 重要情報の透明性を確認</li>
+            </ul>
+          </div>
+        </HelpButton></h1>
         <p className="page-description">
           監視システムが確認している項目の一覧です
         </p>
       </div>
 
       <div className="filters">
-        <select
+        <Select
+          label="カテゴリ"
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="category-filter"
-        >
-          <option value="all">すべてのカテゴリ</option>
-          {categories.filter(c => c !== 'all').map(category => (
-            <option key={category} value={category}>{category}</option>
-          ))}
-        </select>
+          onChange={setSelectedCategory}
+          options={categoryOptions}
+          aria-label="カテゴリフィルター"
+        />
       </div>
 
       <div className="rules-list">
         {filteredRules.map(rule => (
-          <div key={rule.id} className="rule-card">
-            <div className="rule-header" onClick={() => toggleExpand(rule.id)}>
+          <Card key={rule.id} hoverable>
+            <div
+              className="rule-header"
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleExpand(rule.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleExpand(rule.id);
+                }
+              }}
+            >
               <div className="rule-title-section">
                 <h3>{rule.name}</h3>
                 <span className="rule-category">{rule.category}</span>
               </div>
               <div className="rule-meta">
-                {getSeverityBadge(rule.severity)}
-                <span className={`status-badge ${rule.enabled ? 'status-enabled' : 'status-disabled'}`}>
+                <Badge variant={severityVariantMap[rule.severity] ?? 'neutral'} size="sm">
+                  {severityLabelMap[rule.severity] ?? rule.severity}
+                </Badge>
+                <Badge variant={rule.enabled ? 'success' : 'neutral'} size="sm">
                   {rule.enabled ? '有効' : '無効'}
-                </span>
-                <button className="expand-btn">
-                  {expandedRule === rule.id ? '▼' : '▶'}
-                </button>
+                </Badge>
+                <span aria-hidden="true">{expandedRule === rule.id ? '▼' : '▶'}</span>
               </div>
             </div>
 
@@ -159,7 +202,7 @@ const Rules = () => {
                 </ul>
               </div>
             )}
-          </div>
+          </Card>
         ))}
       </div>
 
