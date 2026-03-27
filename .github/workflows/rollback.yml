@@ -1,0 +1,109 @@
+name: Rollback
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Target service'
+        required: true
+        type: choice
+        options:
+          - api
+          - celery-worker
+          - celery-beat
+          - frontend
+          - all
+      image_tag:
+        description: 'Image tag to rollback to (e.g. sha-abc1234)'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.environment == 'production' && secrets.AWS_ROLE_ARN_PRODUCTION || secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Rollback services
+        run: |
+          SERVICES="${{ inputs.service }}"
+          TAG="${{ inputs.image_tag }}"
+
+          if [ "$SERVICES" = "all" ]; then
+            SERVICES="api celery-worker celery-beat frontend"
+          fi
+
+          for svc in $SERVICES; do
+            echo "Rolling back $svc to $TAG..."
+
+            case $svc in
+              api)
+                FAMILY="${{ vars.ECS_TASK_FAMILY_API }}"
+                IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/api:$TAG"
+                ECS_SERVICE="${{ vars.ECS_SERVICE_API }}"
+                CONTAINER="api"
+                ;;
+              celery-worker)
+                FAMILY="${{ vars.ECS_TASK_FAMILY_WORKER }}"
+                IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/api:$TAG"
+                ECS_SERVICE="${{ vars.ECS_SERVICE_WORKER }}"
+                CONTAINER="celery-worker"
+                ;;
+              celery-beat)
+                FAMILY="${{ vars.ECS_TASK_FAMILY_BEAT }}"
+                IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/api:$TAG"
+                ECS_SERVICE="${{ vars.ECS_SERVICE_BEAT }}"
+                CONTAINER="celery-beat"
+                ;;
+              frontend)
+                FAMILY="${{ vars.ECS_TASK_FAMILY_FRONTEND }}"
+                IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/frontend:$TAG"
+                ECS_SERVICE="${{ vars.ECS_SERVICE_FRONTEND }}"
+                CONTAINER="frontend"
+                ;;
+            esac
+
+            # Download current task definition
+            TASK_DEF=$(aws ecs describe-task-definition \
+              --task-definition "$FAMILY" \
+              --query taskDefinition)
+
+            # Replace image in container definition
+            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq --arg IMG "$IMAGE" \
+              '.containerDefinitions[0].image = $IMG')
+
+            # Register new task definition revision
+            echo "$NEW_TASK_DEF" | jq '{containerDefinitions, family, taskRoleArn, executionRoleArn, networkMode, requiresCompatibilities, cpu, memory}' > /tmp/task-def.json
+            NEW_ARN=$(aws ecs register-task-definition \
+              --cli-input-json file:///tmp/task-def.json \
+              --query taskDefinition.taskDefinitionArn \
+              --output text)
+
+            # Deploy and wait for stability
+            aws ecs update-service \
+              --cluster ${{ vars.ECS_CLUSTER }} \
+              --service "$ECS_SERVICE" \
+              --task-definition "$NEW_ARN" \
+              --force-new-deployment
+
+            echo "Waiting for $svc to stabilize..."
+            aws ecs wait services-stable \
+              --cluster ${{ vars.ECS_CLUSTER }} \
+              --services "$ECS_SERVICE"
+
+            echo "✓ $svc rolled back to $TAG"
+          done

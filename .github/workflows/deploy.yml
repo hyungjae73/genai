@@ -1,0 +1,325 @@
+name: Build & Deploy
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - "5432:5432"
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - "6379:6379"
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+      - run: pip install -r requirements.txt
+      - run: pytest --cov=src --cov-report=xml tests/
+        env:
+          DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-ci
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: node-${{ hashFiles('frontend/package-lock.json') }}
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run test -- --coverage
+        working-directory: frontend
+
+  build-and-push:
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Backend image metadata & build
+      - uses: docker/metadata-action@v5
+        id: meta-api
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/api
+          tags: |
+            type=sha
+            type=raw,value=latest
+            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Frontend image metadata & build
+      - uses: docker/metadata-action@v5
+        id: meta-frontend
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/frontend
+          tags: |
+            type=sha
+            type=raw,value=latest
+            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  security-scan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository }}/frontend:sha-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+  # ---------------------------------------------------------------------------
+  # NOTE: ECS services should be configured with the following deployment
+  # settings (via Terraform / CloudFormation / AWS Console) to enable
+  # Circuit Breaker auto-rollback and rolling updates (Requirements 11.1, 11.4):
+  #
+  #   deploymentConfiguration:
+  #     deploymentCircuitBreaker:
+  #       enable: true
+  #       rollback: true
+  #     minimumHealthyPercent: 100
+  #     maximumPercent: 200
+  #
+  # - deploymentCircuitBreaker.rollback: true  → auto-rollback on repeated
+  #   health-check failures of new tasks
+  # - minimumHealthyPercent: 100 → old tasks stay running until new tasks
+  #   are healthy (zero-downtime rolling update)
+  # - maximumPercent: 200 → allows double the desired count during deploy
+  # ---------------------------------------------------------------------------
+
+  deploy-staging:
+    needs: security-scan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # API deploy
+      - name: Download API task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_API }} \
+            --query taskDefinition > task-def-api.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-api
+        with:
+          task-definition: task-def-api.json
+          container-name: api
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-api.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_API }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # Celery Worker deploy
+      - name: Download worker task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_WORKER }} \
+            --query taskDefinition > task-def-worker.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-worker
+        with:
+          task-definition: task-def-worker.json
+          container-name: celery-worker
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-worker.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_WORKER }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # Celery Beat deploy
+      - name: Download beat task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_BEAT }} \
+            --query taskDefinition > task-def-beat.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-beat
+        with:
+          task-definition: task-def-beat.json
+          container-name: celery-beat
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-beat.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_BEAT }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # Frontend deploy
+      - name: Download frontend task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_FRONTEND }} \
+            --query taskDefinition > task-def-frontend.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-frontend
+        with:
+          task-definition: task-def-frontend.json
+          container-name: frontend
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/frontend:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-frontend.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_FRONTEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  deploy-production:
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # API deploy
+      - name: Download API task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_API }} \
+            --query taskDefinition > task-def-api.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-api
+        with:
+          task-definition: task-def-api.json
+          container-name: api
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-api.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_API }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # Celery Worker deploy
+      - name: Download worker task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_WORKER }} \
+            --query taskDefinition > task-def-worker.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-worker
+        with:
+          task-definition: task-def-worker.json
+          container-name: celery-worker
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-worker.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_WORKER }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # Celery Beat deploy
+      - name: Download beat task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_BEAT }} \
+            --query taskDefinition > task-def-beat.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-beat
+        with:
+          task-definition: task-def-beat.json
+          container-name: celery-beat
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/api:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-beat.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_BEAT }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # Frontend deploy
+      - name: Download frontend task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_TASK_FAMILY_FRONTEND }} \
+            --query taskDefinition > task-def-frontend.json
+      - uses: aws-actions/amazon-ecs-render-task-definition@v1
+        id: render-frontend
+        with:
+          task-definition: task-def-frontend.json
+          container-name: frontend
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/frontend:sha-${{ github.sha }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-frontend.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_FRONTEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true

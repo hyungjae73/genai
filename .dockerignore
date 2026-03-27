@@ -32,8 +32,10 @@ Dockerfile
 .dockerignore
 
 # Environment
-.env
-.env.local
+.env*
+
+# Tests
+tests/
 
 # Documentation
 *.md
