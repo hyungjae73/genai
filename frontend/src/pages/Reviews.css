@@ -1,0 +1,122 @@
+.reviews-page {
+  padding: 1.5rem;
+}
+
+.reviews-page .page-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.reviews-page .page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reviews-count {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.reviews-filters {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.reviews-error {
+  color: var(--color-danger, #ef4444);
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+}
+
+.reviews-loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.reviews-table-wrapper {
+  overflow-x: auto;
+}
+
+.reviews-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.reviews-table th,
+.reviews-table td {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.reviews-table th {
+  font-weight: 600;
+  color: var(--color-text-secondary, #6b7280);
+  background: var(--color-surface-secondary, #f9fafb);
+}
+
+.reviews-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.reviews-row:hover {
+  background: var(--color-surface-hover, #f3f4f6);
+}
+
+.reviews-row:focus {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: -2px;
+}
+
+.reviews-empty {
+  text-align: center;
+  color: var(--color-text-secondary, #6b7280);
+  padding: 2rem;
+}
+
+.reviews-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.reviews-page-info {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+/* Help modal table styles */
+.reviews-page .help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.reviews-page .help-table th,
+.reviews-page .help-table td {
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.reviews-page .help-table th {
+  font-weight: 600;
+  color: var(--color-text-secondary, #6b7280);
+  background: var(--color-surface-secondary, #f9fafb);
+}
