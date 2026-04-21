@@ -65,3 +65,6 @@ celerybeat.pid
 
 # Playwright
 .playwright/
+
+# Kiro - MCP settings (may contain API keys/tokens)
+.kiro/settings/mcp.json
