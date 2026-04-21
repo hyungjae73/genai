@@ -87,10 +87,13 @@ class CrawlerEngine:
         return self._redis_client
     
     async def _get_browser(self) -> Browser:
-        """Get or create Playwright browser instance."""
+        """Get or create Playwright browser instance via StealthBrowserFactory."""
         if self._browser is None:
+            from src.pipeline.stealth_browser import StealthBrowserFactory
+
+            self._stealth_factory = StealthBrowserFactory()
             playwright = await async_playwright().start()
-            self._browser = await playwright.chromium.launch(headless=True)
+            self._browser = await self._stealth_factory.create_browser(playwright)
         return self._browser
     
     async def close(self):
@@ -224,9 +227,14 @@ class CrawlerEngine:
             Exception: If crawling fails
         """
         browser = await self._get_browser()
-        page: Page = await browser.new_page(user_agent=self.user_agent)
-        
+        context = await self._stealth_factory.create_context(browser)
+        page: Page = await context.new_page()
+        await self._stealth_factory.apply_stealth(page)
+
         try:
+            # Jitter before request
+            await self._stealth_factory.jitter()
+
             # Navigate to page with timeout
             response = await page.goto(url, timeout=self.timeout_seconds * 1000)
             
@@ -245,6 +253,7 @@ class CrawlerEngine:
             
         finally:
             await page.close()
+            await context.close()
     
     async def crawl_site(
         self,

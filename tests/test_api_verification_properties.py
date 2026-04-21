@@ -147,7 +147,7 @@ class TestAPIVerificationTrigger:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             response = client.post(
                 "/api/verification/run",
                 json={"site_id": site_id},
@@ -187,7 +187,7 @@ class TestAPISiteValidation:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             response = client.post(
                 "/api/verification/run",
                 json={"site_id": site_id},
@@ -230,7 +230,7 @@ class TestAPIConcurrencyControl:
         }
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             response = client.post(
                 "/api/verification/run",
                 json={"site_id": site_id},
@@ -274,7 +274,7 @@ class TestAPIOptionalParameters:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             response = client.post(
                 "/api/verification/run",
                 json={
@@ -344,7 +344,7 @@ class TestAPIResultsRetrieval:
         from src.api.verification import get_db
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
         response = client.get(f"/api/verification/results/{site_id}", params={"limit": 10})
 
         assert response.status_code == 200, (
@@ -399,7 +399,7 @@ class TestAPINoResultsHandling:
         from src.api.verification import get_db
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
         response = client.get(f"/api/verification/results/{site_id}")
 
         assert response.status_code == 404, (
@@ -465,7 +465,7 @@ class TestAPIPagination:
         from src.api.verification import get_db
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
         response = client.get(
             f"/api/verification/results/{site_id}",
             params={"limit": limit, "offset": offset},
@@ -508,7 +508,7 @@ class TestAPIIntegration:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
             # Step 1: Trigger verification
             response = client.post(
@@ -571,7 +571,7 @@ class TestAPIIntegration:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             response = client.post(
                 "/api/verification/run",
                 json={"site_id": 99999},
@@ -586,7 +586,7 @@ class TestAPIIntegration:
         from src.api.verification import get_db
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
         response = client.get("/api/verification/results/99999")
         assert response.status_code == 404
 
@@ -600,7 +600,7 @@ class TestAPIIntegration:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
             # First request succeeds
             response1 = client.post(
@@ -627,7 +627,7 @@ class TestAPIIntegration:
         app.dependency_overrides[get_db] = lambda: db
 
         with _patch_background_task():
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             response = client.post(
                 "/api/verification/run",
                 json={"site_id": 1},

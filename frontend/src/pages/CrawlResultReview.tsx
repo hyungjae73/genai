@@ -420,22 +420,23 @@ const CrawlResultReviewPage: React.FC = () => {
         <div className="crawl-review">
           <div className="crawl-review__header">
             <div className="crawl-review__header-left">
-              <h1>クロール結果レビュー <HelpButton title="クロール結果レビューの使い方">
+              <h1>クロール結果レビュー <HelpButton title="このページの使い方">
                 <div className="help-content">
-                  <h3>ユーザーストーリー</h3>
-                  <p>クロールで取得したデータを確認・編集し、抽出精度を検証したい</p>
+                  <h3>できること</h3>
+                  <ul>
+                    <li>スクリーンショットと抽出データの並列確認</li>
+                    <li>抽出データの手動編集・承認・却下</li>
+                    <li>HTML解析とOCR解析の精度比較</li>
+                  </ul>
 
-                  <h3>スクリーンショットとデータの並列表示</h3>
-                  <p>画面左側にスクリーンショット、右側に抽出データが並列表示されます。ズーム・パン操作でスクリーンショットの詳細を確認できます。</p>
+                  <h3>操作方法</h3>
+                  <ul>
+                    <li>左側のスクリーンショットはズーム・パン操作可能</li>
+                    <li>右側のフィールドをクリックでスクリーンショット上をハイライト</li>
+                    <li>✎ ボタンでフィールド値を直接編集</li>
+                  </ul>
 
-                  <h3>フィールドハイライト</h3>
-                  <p>右側のデータフィールドをクリックすると、スクリーンショット上の該当箇所がハイライト表示されます。もう一度クリックするとハイライトが解除されます。</p>
-
-                  <h3>承認ワークフロー</h3>
-                  <p>抽出データの確認後、承認または却下の操作が可能です。データの手動編集も行えます。</p>
-
-                  <h3>HTML解析とOCR解析の比較</h3>
-                  <p>HTML解析とOCR解析の結果を比較し、抽出精度を検証できます。信頼度スコアが低いフィールドは優先的に確認してください。</p>
+                  <div className="help-tip">信頼度スコアが低いフィールドから優先的に確認すると効率的です。</div>
                 </div>
               </HelpButton></h1>
             </div>
@@ -495,22 +496,23 @@ const CrawlResultReviewPage: React.FC = () => {
       {/* Header bar */}
       <div className="crawl-review__header">
         <div className="crawl-review__header-left">
-          <h1>クロール結果レビュー <HelpButton title="クロール結果レビューの使い方">
+          <h1>クロール結果レビュー <HelpButton title="このページの使い方">
             <div className="help-content">
-              <h3>ユーザーストーリー</h3>
-              <p>クロールで取得したデータを確認・編集し、抽出精度を検証したい</p>
+              <h3>できること</h3>
+              <ul>
+                <li>スクリーンショットと抽出データの並列確認</li>
+                <li>抽出データの手動編集・承認・却下</li>
+                <li>HTML解析とOCR解析の精度比較</li>
+              </ul>
 
-              <h3>スクリーンショットとデータの並列表示</h3>
-              <p>画面左側にスクリーンショット、右側に抽出データが並列表示されます。ズーム・パン操作でスクリーンショットの詳細を確認できます。</p>
+              <h3>操作方法</h3>
+              <ul>
+                <li>左側のスクリーンショットはズーム・パン操作可能</li>
+                <li>右側のフィールドをクリックでスクリーンショット上をハイライト</li>
+                <li>✎ ボタンでフィールド値を直接編集</li>
+              </ul>
 
-              <h3>フィールドハイライト</h3>
-              <p>右側のデータフィールドをクリックすると、スクリーンショット上の該当箇所がハイライト表示されます。もう一度クリックするとハイライトが解除されます。</p>
-
-              <h3>承認ワークフロー</h3>
-              <p>抽出データの確認後、承認または却下の操作が可能です。データの手動編集も行えます。</p>
-
-              <h3>HTML解析とOCR解析の比較</h3>
-              <p>HTML解析とOCR解析の結果を比較し、抽出精度を検証できます。信頼度スコアが低いフィールドは優先的に確認してください。</p>
+              <div className="help-tip">信頼度スコアが低いフィールドから優先的に確認すると効率的です。</div>
             </div>
           </HelpButton></h1>
           <span className="crawl-review__meta">
@@ -525,7 +527,12 @@ const CrawlResultReviewPage: React.FC = () => {
         </div>
         <div className="crawl-review__header-right">
           <ConfidenceIndicator score={overallConfidence} fieldName="全体信頼度" />
-          <span className={`status-badge status-badge--${data.status}`}>
+          <span className={`status-badge status-badge--${data.status}`} title={
+            data.status === 'pending' ? '抽出データの確認・承認待ちです' :
+            data.status === 'approved' ? '抽出データが承認されました' :
+            data.status === 'rejected' ? '抽出データが却下されました' :
+            data.status === 'failed' ? 'データ抽出に失敗しました' : ''
+          }>
             {data.status === 'pending' && '保留中'}
             {data.status === 'approved' && '承認済み'}
             {data.status === 'rejected' && '却下'}

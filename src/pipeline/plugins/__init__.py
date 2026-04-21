@@ -4,7 +4,7 @@
 PageFetcher ステージ: LocalePlugin, ModalDismissPlugin, PreCaptureScriptPlugin
 DataExtractor ステージ: StructuredDataPlugin, ShopifyPlugin, HTMLParserPlugin, OCRPlugin
 Validator ステージ: ContractComparisonPlugin, EvidencePreservationPlugin
-Reporter ステージ: DBStoragePlugin, ObjectStoragePlugin, AlertPlugin
+Reporter ステージ: DBStoragePlugin, ObjectStoragePlugin, AlertPlugin, NotificationPlugin
 """
 
 from src.pipeline.plugins.locale_plugin import LocalePlugin
@@ -19,6 +19,7 @@ from src.pipeline.plugins.evidence_preservation_plugin import EvidencePreservati
 from src.pipeline.plugins.db_storage_plugin import DBStoragePlugin
 from src.pipeline.plugins.object_storage_plugin import ObjectStoragePlugin
 from src.pipeline.plugins.alert_plugin import AlertPlugin
+from src.pipeline.plugins.notification_plugin import NotificationPlugin
 
 __all__ = [
     "LocalePlugin",
@@ -33,4 +34,5 @@ __all__ = [
     "DBStoragePlugin",
     "ObjectStoragePlugin",
     "AlertPlugin",
+    "NotificationPlugin",
 ]

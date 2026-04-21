@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.database import get_db
+from src.auth.dependencies import get_current_user_or_api_key
 from src.models import MonitoringSite, VerificationResult
 from src.verification_service import VerificationService
 from src.analyzer import ContentAnalyzer
@@ -156,7 +157,8 @@ async def _run_verification_task(site_id: int, db: Session):
 async def trigger_verification(
     request: VerificationTriggerRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Trigger verification for a site.
@@ -206,7 +208,8 @@ async def get_verification_results(
     site_id: int,
     limit: int = 1,
     offset: int = 0,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get verification results for a site.
@@ -252,7 +255,8 @@ async def get_verification_results(
 @router.get("/status/{job_id}")
 async def get_verification_status(
     job_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get status of a verification job.
@@ -333,5 +337,26 @@ def _format_verification_result(result: VerificationResult, site_name: str) -> d
     response['data_source'] = result.data_source if result.data_source is not None else None
     response['structured_data_status'] = result.structured_data_status if result.structured_data_status is not None else None
     response['evidence_status'] = result.evidence_status if result.evidence_status is not None else None
+
+    # Evidence records (verification-flow-restructure, 要件: 11.4)
+    try:
+        from src.models import EvidenceRecord
+        evidence_records = []
+        if hasattr(result, 'evidence_records'):
+            for er in result.evidence_records:
+                evidence_records.append({
+                    'id': er.id,
+                    'verification_result_id': er.verification_result_id,
+                    'variant_name': er.variant_name,
+                    'screenshot_path': er.screenshot_path,
+                    'roi_image_path': er.roi_image_path,
+                    'ocr_text': er.ocr_text,
+                    'ocr_confidence': er.ocr_confidence,
+                    'evidence_type': er.evidence_type,
+                    'created_at': er.created_at,
+                })
+        response['evidence_records'] = evidence_records if evidence_records else None
+    except Exception:
+        response['evidence_records'] = None
 
     return response

@@ -5,18 +5,23 @@ Defines stage tasks (crawl_task, extract_task, validate_task, report_task)
 that receive serialized CrawlContext dicts, deserialize, run the stage,
 and serialize the result for the next stage.
 
-Requirements: 16.1, 2.1
+Also defines the perform_login task for distributed login with retry and locking.
+
+Requirements: 16.1, 2.1, 7.2, 7.3, 7.4, 8.1, 8.3
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
 
+import redis.asyncio as aioredis
 from celery import chain
 
 from src.celery_app import celery_app
+from src.pipeline.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +142,126 @@ def report_task(self, ctx_dict: dict[str, Any]) -> dict[str, Any]:
             exc,
         )
         raise self.retry(exc=exc, countdown=retry_delay)
+
+
+# ---------------------------------------------------------------------------
+# Login task — distributed lock + 3 retries (Req 7.2, 7.3, 7.4, 8.1, 8.3)
+# ---------------------------------------------------------------------------
+
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+
+@celery_app.task(
+    name='src.pipeline_tasks.perform_login',
+    bind=True,
+    max_retries=3,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    acks_late=True,
+)
+def perform_login(self, site_id: int) -> dict[str, Any]:
+    """Login task with distributed lock and 3 retries.
+
+    Flow:
+    1. Acquire distributed lock (skip if already held by another worker)
+    2. Perform login (placeholder — actual login logic is site-specific)
+    3. Verify lock still held before saving cookies
+    4. Release lock on completion
+    5. Mark login_failed after 3 retries exhausted
+
+    Requirements: 7.2, 7.3, 7.4, 8.1, 8.3
+    """
+    try:
+        return asyncio.run(_perform_login_async(self, site_id))
+    except self.MaxRetriesExceededError:
+        # All 3 retries exhausted — mark login_failed (Req 7.4)
+        asyncio.run(_mark_login_failed(site_id))
+        logger.error(
+            "perform_login exhausted all retries for site_id=%d, marked login_failed",
+            site_id,
+        )
+        return {
+            'site_id': site_id,
+            'status': 'login_failed',
+            'retries_exhausted': True,
+        }
+
+
+async def _perform_login_async(task, site_id: int) -> dict[str, Any]:
+    """Async implementation of the login flow with distributed lock."""
+    redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+    session_mgr = SessionManager(redis_client)
+
+    try:
+        # Step 1: Acquire distributed lock (Req 8.1)
+        lock_acquired = await session_mgr.acquire_login_lock(site_id)
+        if not lock_acquired:
+            logger.info(
+                "Login lock already held for site_id=%d, skipping",
+                site_id,
+            )
+            return {
+                'site_id': site_id,
+                'status': 'lock_held',
+                'skipped': True,
+            }
+
+        try:
+            # Step 2: Perform login (placeholder — site-specific logic)
+            cookies = await _do_site_login(site_id)
+
+            # Step 3: Verify lock still held before saving cookies (Req 8.3 / CTO Review Fix)
+            lock_still_held = await session_mgr.verify_lock_held(site_id)
+            if not lock_still_held:
+                logger.warning(
+                    "Login lock expired before cookie save for site_id=%d",
+                    site_id,
+                )
+                raise RuntimeError(
+                    f"Login lock expired before cookie save for site_id={site_id}"
+                )
+
+            # Step 4: Save refreshed cookies (Req 7.3)
+            await session_mgr.save_cookies(site_id, cookies)
+            logger.info("Login succeeded for site_id=%d, cookies saved", site_id)
+
+            return {
+                'site_id': site_id,
+                'status': 'login_success',
+                'cookies_saved': True,
+            }
+        finally:
+            # Step 5: Release lock on completion (Req 8.3)
+            await session_mgr.release_login_lock(site_id)
+    finally:
+        await redis_client.aclose()
+
+
+async def _do_site_login(site_id: int) -> list[dict[str, Any]]:
+    """Placeholder for site-specific login logic.
+
+    In production, this would use Playwright to navigate to the login page,
+    fill credentials, and extract cookies. For now, returns dummy cookies.
+    """
+    return [
+        {
+            'name': 'session_token',
+            'value': f'token_for_site_{site_id}',
+            'domain': f'site-{site_id}.example.com',
+            'path': '/',
+        }
+    ]
+
+
+async def _mark_login_failed(site_id: int) -> None:
+    """Mark session as login_failed after retries exhausted (Req 7.4)."""
+    redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+    try:
+        session_mgr = SessionManager(redis_client)
+        await session_mgr.mark_login_failed(site_id)
+    finally:
+        await redis_client.aclose()
 
 
 # ---------------------------------------------------------------------------

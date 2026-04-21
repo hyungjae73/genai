@@ -8,6 +8,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from src.api.schemas import AlertResponse
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import Alert, MonitoringSite, Violation
 
@@ -64,7 +65,8 @@ async def list_alerts(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     alert_type: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Get list of alerts."""
     query = db.query(Alert).order_by(Alert.created_at.desc())
@@ -78,7 +80,8 @@ async def list_alerts(
 async def get_site_alerts(
     site_id: int,
     is_resolved: Optional[bool] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Get alerts for a specific site, optionally filtered by resolution status."""
     query = db.query(Alert).filter(Alert.site_id == site_id)
@@ -91,7 +94,7 @@ async def get_site_alerts(
 
 
 @router.get("/{alert_id}", response_model=AlertResponse)
-async def get_alert(alert_id: int, db: Session = Depends(get_db)):
+async def get_alert(alert_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific alert."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:

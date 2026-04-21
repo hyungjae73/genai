@@ -67,6 +67,14 @@ class AlertPlugin(CrawlPlugin):
                     for alert in alerts_generated:
                         session.add(alert)
                     session.commit()
+                    # 審査キューへ自動投入 (要件 2.1, 2.2)
+                    try:
+                        from src.review.service import ReviewService
+                        svc = ReviewService(session)
+                        for alert in alerts_generated:
+                            svc.enqueue_from_alert(alert)
+                    except Exception as review_exc:
+                        logger.warning("審査キュー投入に失敗しました: %s", review_exc)
                     session.close()
                 except Exception as e:
                     logger.error("AlertPlugin DB save failed: %s", e)

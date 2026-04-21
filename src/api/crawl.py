@@ -16,6 +16,7 @@ from src.api.schemas import (
     ManualExtractionInput,
 )
 from src.database import get_db
+from src.auth.dependencies import get_current_user_or_api_key
 from src.models import MonitoringSite, CrawlResult, CrawlJob, ContractCondition, ExtractedPaymentInfo, AuditLog
 from src.auth import verify_api_key
 from src.sanitize import sanitize_dict, strip_html_tags
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/site/{site_id}", response_model=CrawlJobResponse, status_code=status.HTTP_202_ACCEPTED)
-async def start_crawl(site_id: int, db: Session = Depends(get_db)):
+async def start_crawl(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Start a crawl job for the specified site using Celery.
 
@@ -99,7 +100,7 @@ async def start_crawl(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/status/{job_id}", response_model=CrawlStatusResponse)
-async def get_crawl_status(job_id: str, db: Session = Depends(get_db)):
+async def get_crawl_status(job_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get the status of a crawl job from DB.
     """
@@ -124,7 +125,7 @@ async def get_crawl_status(job_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/results/{site_id}", response_model=List[CrawlResultResponse])
-async def get_crawl_results(site_id: int, db: Session = Depends(get_db)):
+async def get_crawl_results(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get crawl result history for a site, ordered by crawled_at descending.
     """
@@ -146,7 +147,7 @@ async def get_crawl_results(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/results/{site_id}/latest", response_model=CrawlResultResponse)
-async def get_latest_crawl_result(site_id: int, db: Session = Depends(get_db)):
+async def get_latest_crawl_result(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get the most recent crawl result for a site.
     """
@@ -173,7 +174,7 @@ async def get_latest_crawl_result(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/extracted/{crawl_result_id}/compare")
-async def get_extracted_data_comparison(crawl_result_id: int, db: Session = Depends(get_db)):
+async def get_extracted_data_comparison(crawl_result_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get both HTML and OCR extracted data for a crawl result, for side-by-side comparison.
     """
@@ -269,7 +270,7 @@ def _determine_extraction_status(records: list) -> str:
 
 
 @router.get("/extracted/{crawl_result_id}/visual-confirmation")
-async def get_visual_confirmation_data(crawl_result_id: int, db: Session = Depends(get_db)):
+async def get_visual_confirmation_data(crawl_result_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get visual confirmation data for a crawl result.
 
@@ -333,6 +334,7 @@ async def save_manual_extraction(
     manual_data: ManualExtractionInput,
     db: Session = Depends(get_db),
     api_key: str = Depends(verify_api_key),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Save manually entered extraction data after visual confirmation.

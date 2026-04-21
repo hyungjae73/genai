@@ -128,7 +128,7 @@ services:
     environment:
       - VITE_API_BASE_URL=http://localhost:${API_PORT:-8000}
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5173/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5173/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -253,6 +253,33 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+    networks:
+      - payment-monitor-network
+
+  # Notification Worker — Req 8.2
+  notification-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: payment-monitor-notification-worker
+    command: celery -A src.celery_app worker -Q notification --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-payment_monitor}:${POSTGRES_PASSWORD:-payment_monitor_pass}@postgres:5432/${POSTGRES_DB:-payment_monitor}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - NOTIFICATION_SLACK_WEBHOOK_URL=${NOTIFICATION_SLACK_WEBHOOK_URL:-}
+      - NOTIFICATION_SLACK_ENABLED=${NOTIFICATION_SLACK_ENABLED:-false}
+      - NOTIFICATION_EMAIL_ENABLED=${NOTIFICATION_EMAIL_ENABLED:-true}
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - payment-monitor-network

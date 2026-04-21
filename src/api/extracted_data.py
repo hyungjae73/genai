@@ -15,6 +15,7 @@ from src.api.schemas import (
     PaginatedExtractedPaymentInfoResponse,
 )
 from src.auth import verify_api_key
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import ExtractedPaymentInfo, AuditLog
 from src.sanitize import sanitize_dict, strip_html_tags
@@ -29,6 +30,7 @@ router = APIRouter()
 async def get_extracted_data_by_crawl_result(
     crawl_result_id: int,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get extracted payment info for a specific crawl result.
@@ -61,6 +63,7 @@ async def get_extracted_data_by_site(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get all extracted payment info for a site with pagination.
@@ -98,6 +101,7 @@ async def update_extracted_data(
     updates: ExtractedPaymentInfoUpdate,
     db: Session = Depends(get_db),
     api_key: str = Depends(verify_api_key),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Update extracted payment info fields (manual correction).
@@ -215,6 +219,7 @@ async def approve_extracted_data(
     id: int,
     db: Session = Depends(get_db),
     api_key: str = Depends(verify_api_key),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Approve extracted payment info.
@@ -254,6 +259,7 @@ async def reject_extracted_data(
     body: RejectRequest,
     db: Session = Depends(get_db),
     api_key: str = Depends(verify_api_key),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Reject extracted payment info with a reason.
@@ -314,6 +320,7 @@ async def get_price_history(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get price history for a specific product on a site.

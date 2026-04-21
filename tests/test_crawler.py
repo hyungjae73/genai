@@ -134,7 +134,7 @@ async def test_crawl_site_success(crawler, db_session):
     db_session.add(site)
     db_session.flush()
 
-    # Mock Playwright browser and page
+    # Mock Playwright browser and page via StealthBrowserFactory
     with patch.object(crawler, "_get_browser") as mock_get_browser, \
          patch.object(crawler, "_check_robots_txt", return_value=True), \
          patch.object(crawler, "_wait_for_rate_limit", return_value=None):
@@ -145,9 +145,19 @@ async def test_crawl_site_success(crawler, db_session):
         mock_page.content = AsyncMock(return_value="<html><body>Test</body></html>")
         mock_page.close = AsyncMock()
 
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
         mock_browser = AsyncMock()
-        mock_browser.new_page = AsyncMock(return_value=mock_page)
         mock_get_browser.return_value = mock_browser
+
+        # Set up mock StealthBrowserFactory on the crawler instance
+        mock_factory = MagicMock()
+        mock_factory.create_context = AsyncMock(return_value=mock_context)
+        mock_factory.apply_stealth = AsyncMock()
+        mock_factory.jitter = AsyncMock()
+        crawler._stealth_factory = mock_factory
 
         # Perform crawl without db_session (crawler expects AsyncSession, we have sync)
         result = await crawler.crawl_site(
@@ -221,9 +231,19 @@ async def test_crawl_site_retry_on_failure(crawler):
         mock_page.content = AsyncMock(return_value="<html>Success</html>")
         mock_page.close = AsyncMock()
 
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
         mock_browser = AsyncMock()
-        mock_browser.new_page = AsyncMock(return_value=mock_page)
         mock_get_browser.return_value = mock_browser
+
+        # Set up mock StealthBrowserFactory on the crawler instance
+        mock_factory = MagicMock()
+        mock_factory.create_context = AsyncMock(return_value=mock_context)
+        mock_factory.apply_stealth = AsyncMock()
+        mock_factory.jitter = AsyncMock()
+        crawler._stealth_factory = mock_factory
 
         # Perform crawl
         result = await crawler.crawl_site(
@@ -250,9 +270,19 @@ async def test_crawl_site_max_retries_exceeded(crawler):
         mock_page.goto = AsyncMock(side_effect=Exception("Network error"))
         mock_page.close = AsyncMock()
 
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
         mock_browser = AsyncMock()
-        mock_browser.new_page = AsyncMock(return_value=mock_page)
         mock_get_browser.return_value = mock_browser
+
+        # Set up mock StealthBrowserFactory on the crawler instance
+        mock_factory = MagicMock()
+        mock_factory.create_context = AsyncMock(return_value=mock_context)
+        mock_factory.apply_stealth = AsyncMock()
+        mock_factory.jitter = AsyncMock()
+        crawler._stealth_factory = mock_factory
 
         # Perform crawl
         result = await crawler.crawl_site(

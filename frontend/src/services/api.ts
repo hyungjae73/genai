@@ -1,15 +1,124 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig, type AxiosError } from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-api-key';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
     'X-API-Key': API_KEY,
   },
 });
+
+// --- Auth token management for interceptors ---
+let _accessToken: string | null = null;
+let _refreshFn: (() => Promise<string | null>) | null = null;
+let _logoutFn: (() => void) | null = null;
+let _isRefreshing = false;
+let _failedQueue: Array<{
+  resolve: (token: string | null) => void;
+  reject: (error: unknown) => void;
+}> = [];
+
+/** Called by AuthProvider to wire up token state */
+export function setAuthInterceptors(
+  getToken: () => string | null,
+  refreshFn: () => Promise<string | null>,
+  logoutFn: () => void,
+) {
+  _refreshFn = refreshFn;
+  _logoutFn = logoutFn;
+  // We read the token lazily via getToken
+  _getToken = getToken;
+}
+
+let _getToken: (() => string | null) | null = null;
+
+function processQueue(error: unknown, token: string | null = null) {
+  _failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  _failedQueue = [];
+}
+
+// Request interceptor: attach Bearer token
+api.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = _getToken ? _getToken() : _accessToken;
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+// Response interceptor: handle 401 with auto-refresh
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    // Don't intercept auth endpoints themselves
+    const url = originalRequest?.url || '';
+    if (
+      error.response?.status !== 401 ||
+      originalRequest._retry ||
+      url.includes('/api/auth/login') ||
+      url.includes('/api/auth/refresh')
+    ) {
+      return Promise.reject(error);
+    }
+
+    if (_isRefreshing) {
+      return new Promise((resolve, reject) => {
+        _failedQueue.push({ resolve, reject });
+      }).then((token) => {
+        if (token && originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+        }
+        return api(originalRequest);
+      });
+    }
+
+    originalRequest._retry = true;
+    _isRefreshing = true;
+
+    try {
+      if (!_refreshFn) {
+        throw new Error('No refresh function configured');
+      }
+      const newToken = await _refreshFn();
+      if (!newToken) {
+        throw new Error('Refresh failed');
+      }
+      _accessToken = newToken;
+      processQueue(null, newToken);
+      if (originalRequest.headers) {
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      }
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      if (_logoutFn) {
+        _logoutFn();
+      }
+      // Redirect to login
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      return Promise.reject(refreshError);
+    } finally {
+      _isRefreshing = false;
+    }
+  },
+);
 
 // Types
 export interface Site {
@@ -118,7 +227,7 @@ export default api;
 export interface ContractCondition {
   id: number;
   site_id: number;
-  category_id: number | null;
+  category_id?: number;
   version: number;
   is_current: boolean;
   created_at: string;
@@ -138,6 +247,7 @@ export interface ContractCondition {
     commitment_months?: number | number[];
     has_cancellation_policy?: boolean;
   };
+  dynamic_fields?: Record<string, unknown>;
 }
 
 export interface ContractConditionCreate {
@@ -158,6 +268,8 @@ export interface ContractConditionCreate {
     commitment_months?: number | number[];
     has_cancellation_policy?: boolean;
   };
+  category_id?: number;
+  dynamic_fields?: Record<string, unknown>;
 }
 
 // Customer Types
@@ -550,5 +662,66 @@ export const getCrawlResults = async (siteId: number): Promise<CrawlResult[]> =>
 
 export const getLatestCrawlResult = async (siteId: number): Promise<CrawlResult> => {
   const response = await api.get(`/api/crawl/results/${siteId}/latest`);
+  return response.data;
+};
+
+// ------------------------------------------------------------------ //
+// 審査ワークフロー API クライアント (manual-review-workflow)
+// 要件: 3.1, 3.2, 3.4, 3.6, 4.1, 4.2, 5.4, 8.1
+// ------------------------------------------------------------------ //
+import type {
+  AssignReviewerRequest,
+  PaginatedReviewResponse,
+  ReviewDecision,
+  ReviewDecisionRequest,
+  ReviewDetail,
+  ReviewStats,
+} from '../types/review';
+
+export interface ReviewListParams {
+  status?: string;
+  priority?: string;
+  review_type?: string;
+  assigned_to?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export const fetchReviews = async (params: ReviewListParams = {}): Promise<PaginatedReviewResponse> => {
+  const response = await api.get('/api/reviews/', { params });
+  return response.data;
+};
+
+export const fetchReviewDetail = async (reviewId: number): Promise<ReviewDetail> => {
+  const response = await api.get(`/api/reviews/${reviewId}`);
+  return response.data;
+};
+
+export const assignReviewer = async (reviewId: number, body: AssignReviewerRequest): Promise<void> => {
+  await api.post(`/api/reviews/${reviewId}/assign`, body);
+};
+
+export const decidePrimary = async (reviewId: number, body: ReviewDecisionRequest): Promise<ReviewDecision> => {
+  const response = await api.post(`/api/reviews/${reviewId}/decide`, body);
+  return response.data;
+};
+
+export const decideSecondary = async (reviewId: number, body: ReviewDecisionRequest): Promise<ReviewDecision> => {
+  const response = await api.post(`/api/reviews/${reviewId}/final-decide`, body);
+  return response.data;
+};
+
+export const fetchReviewStats = async (): Promise<ReviewStats> => {
+  const response = await api.get('/api/reviews/stats');
+  return response.data;
+};
+
+export const fetchEscalatedReviews = async (params: { limit?: number; offset?: number } = {}): Promise<PaginatedReviewResponse> => {
+  const response = await api.get('/api/reviews/escalated', { params });
+  return response.data;
+};
+
+export const fetchDecisions = async (reviewId: number): Promise<ReviewDecision[]> => {
+  const response = await api.get(`/api/reviews/${reviewId}/decisions`);
   return response.data;
 };

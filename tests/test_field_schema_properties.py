@@ -190,7 +190,7 @@ class TestFieldSchemaCRUDRoundTrip:
 
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Step 1: Create a field schema via POST
         payload = {
@@ -292,7 +292,7 @@ class TestFieldTypeCompleteness:
 
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Step 1: Create a field schema with the given type
         payload = {

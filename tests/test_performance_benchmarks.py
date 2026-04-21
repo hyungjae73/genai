@@ -197,7 +197,7 @@ class TestPerformanceBenchmarks:
 
         from unittest.mock import patch
         with patch("src.api.verification._run_verification_task", new=AsyncMock()):
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
             start = time.perf_counter()
             response = client.post("/api/verification/run", json={"site_id": 1})

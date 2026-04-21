@@ -202,22 +202,27 @@
   right: var(--space-6);
   padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-md);
-  color: var(--color-text-inverse);
   font-size: var(--font-base);
   z-index: 1000;
   box-shadow: var(--shadow-lg);
 }
 
 .toast-success {
-  background-color: var(--color-success);
+  background-color: var(--color-success-subtle);
+  border-left: 4px solid var(--color-success);
+  color: var(--color-success-text);
 }
 
 .toast-error {
-  background-color: var(--color-danger);
+  background-color: var(--color-danger-subtle, #fef2f2);
+  border-left: 4px solid var(--color-danger);
+  color: var(--color-danger-text, #991b1b);
 }
 
 .toast-warning {
-  background-color: var(--color-warning);
+  background-color: var(--color-warning-subtle, #fffbeb);
+  border-left: 4px solid var(--color-warning);
+  color: var(--color-warning-text, #92400e);
 }
 
 @media (max-width: 767px) {

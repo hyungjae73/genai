@@ -15,11 +15,26 @@ from typing import Optional
 from src.models import MonitoringSite
 from src.pipeline.context import CrawlContext
 from src.pipeline.plugin import CrawlPlugin
+from src.pipeline.plugins.notification_plugin import NotificationPlugin
+from src.pipeline.plugins.journey_plugin import JourneyPlugin
+from src.pipeline.plugins.css_visual_plugin import CSSVisualPlugin
+from src.pipeline.plugins.llm_classifier_plugin import LLMClassifierPlugin
+from src.pipeline.plugins.ui_trap_plugin import UITrapPlugin
+from src.pipeline.plugins.dark_pattern_utils import compute_dark_pattern_score
 
 logger = logging.getLogger(__name__)
 
 # Stage execution order (fixed)
 STAGE_ORDER = ["page_fetcher", "data_extractor", "validator", "reporter"]
+
+# Default reporter stage plugin order: DBStoragePlugin → AlertPlugin → NotificationPlugin
+# Req 1.3: NotificationPlugin executes after AlertPlugin in the Reporter stage.
+DEFAULT_REPORTER_PLUGINS = [
+    "DBStoragePlugin",
+    "ObjectStoragePlugin",
+    "AlertPlugin",
+    "NotificationPlugin",
+]
 
 
 class CrawlPipeline:
@@ -84,6 +99,10 @@ class CrawlPipeline:
                     "reason": "html_content is None",
                 }
                 continue
+
+            # Run compute_dark_pattern_score after validator, before reporter
+            if stage_name == "reporter":
+                ctx = compute_dark_pattern_score(ctx)
 
             ctx = await self._run_stage(stage_name, ctx)
 

@@ -3,16 +3,17 @@ API endpoints for monitoring site management.
 """
 
 import json
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
-from typing import List
 
 from src.api.schemas import (
     MonitoringSiteCreate,
     MonitoringSiteUpdate,
     MonitoringSiteResponse
 )
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import MonitoringSite
 
@@ -20,7 +21,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=MonitoringSiteResponse, status_code=status.HTTP_201_CREATED)
-async def create_site(site: MonitoringSiteCreate, db: Session = Depends(get_db)):
+async def create_site(site: MonitoringSiteCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Create a new monitoring site."""
     db_site = MonitoringSite(
         customer_id=site.customer_id,
@@ -37,14 +38,14 @@ async def create_site(site: MonitoringSiteCreate, db: Session = Depends(get_db))
 
 
 @router.get("/", response_model=List[MonitoringSiteResponse])
-async def list_sites(db: Session = Depends(get_db)):
+async def list_sites(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get list of all monitoring sites."""
     sites = db.query(MonitoringSite).all()
     return sites
 
 
 @router.get("/{site_id}", response_model=MonitoringSiteResponse)
-async def get_site(site_id: int, db: Session = Depends(get_db)):
+async def get_site(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific monitoring site."""
     site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
     
@@ -58,7 +59,7 @@ async def get_site(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{site_id}", response_model=MonitoringSiteResponse)
-async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: Session = Depends(get_db)):
+async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Update a monitoring site."""
     site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
     
@@ -131,7 +132,7 @@ async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: Sessi
 
 
 @router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_site(site_id: int, db: Session = Depends(get_db)):
+async def delete_site(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Delete a monitoring site."""
     site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
     

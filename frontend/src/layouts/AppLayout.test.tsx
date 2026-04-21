@@ -15,6 +15,23 @@ vi.mock('../hooks/useMediaQuery', () => ({
   },
 }));
 
+// Mock useAuth — default to admin so all nav items show
+const mockLogout = vi.fn();
+let mockAuthState = {
+  user: { id: 1, username: 'admin', role: 'admin' },
+  accessToken: 'test-token',
+  isAuthenticated: true,
+  isLoading: false,
+  login: vi.fn(),
+  logout: mockLogout,
+  refreshToken: vi.fn(),
+  hasRole: (...roles: string[]) => roles.includes('admin'),
+};
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => mockAuthState,
+}));
+
 function renderLayout(children: React.ReactNode = <div>Test Content</div>) {
   return render(
     <MemoryRouter initialEntries={['/']}>
@@ -53,9 +70,9 @@ describe('AppLayout', () => {
       expect(screen.getByRole('navigation', { name: 'メインナビゲーション' })).toBeInTheDocument();
     });
 
-    it('renders all 8 navigation items', () => {
+    it('renders all 9 navigation items', () => {
       renderLayout();
-      expect(screen.getAllByRole('link')).toHaveLength(8);
+      expect(screen.getAllByRole('link')).toHaveLength(9);
     });
 
     it('does not show hamburger button', () => {
@@ -74,6 +91,7 @@ describe('AppLayout', () => {
       expect(screen.getByText('監視')).toBeInTheDocument();
       expect(screen.getByText('分析')).toBeInTheDocument();
       expect(screen.getByText('設定')).toBeInTheDocument();
+      expect(screen.getByText('管理')).toBeInTheDocument();
     });
 
     it('renders サイト管理 link with /site-management path', () => {
@@ -133,6 +151,7 @@ describe('AppLayout', () => {
       expect(screen.getByText('監視')).toBeInTheDocument();
       expect(screen.getByText('分析')).toBeInTheDocument();
       expect(screen.getByText('設定')).toBeInTheDocument();
+      expect(screen.getByText('管理')).toBeInTheDocument();
     });
 
     it('collapses sidebar labels on mouseleave from sidebar wrapper', () => {
@@ -235,7 +254,7 @@ describe('AppLayout', () => {
     it('renders navigation items inside drawer', () => {
       renderLayout();
       fireEvent.click(screen.getByLabelText('メニューを開く'));
-      expect(screen.getAllByRole('link')).toHaveLength(8);
+      expect(screen.getAllByRole('link')).toHaveLength(9);
     });
   });
 });

@@ -29,6 +29,7 @@ PIPELINE_QUEUES = (
     Queue('extract', routing_key='extract'),     # DataExtractor — CPU optimized
     Queue('validate', routing_key='validate'),   # Validator — CPU optimized
     Queue('report', routing_key='report'),       # Reporter — DB/Storage I/O
+    Queue('notification', routing_key='notification'),  # Notification — Slack/Email
 )
 
 # Task routing rules (Req 16.2)
@@ -37,6 +38,9 @@ PIPELINE_TASK_ROUTES = {
     'src.pipeline_tasks.extract_task': {'queue': 'extract'},
     'src.pipeline_tasks.validate_task': {'queue': 'validate'},
     'src.pipeline_tasks.report_task': {'queue': 'report'},
+    'src.pipeline_tasks.perform_login': {'queue': 'crawl'},
+    'src.notification_tasks.send_notification': {'queue': 'notification'},
+    'src.pipeline.vlm_tasks.classify_page_vlm': {'queue': 'extract'},
 }
 
 # Create Celery app
@@ -44,7 +48,7 @@ celery_app = Celery(
     'payment_compliance_monitor',
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['src.tasks', 'src.pipeline_tasks'],
+    include=['src.tasks', 'src.pipeline_tasks', 'src.notification_tasks', 'src.pipeline.vlm_tasks'],
 )
 
 # Celery configuration

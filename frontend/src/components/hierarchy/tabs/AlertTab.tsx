@@ -131,7 +131,7 @@ const AlertTab = ({ siteId, customerName }: AlertTabProps) => {
                 <span className={`alert-type-badge ${alert.alert_type === 'fake_site' ? 'fake-site' : 'violation'}`}>
                   {alert.alert_type === 'fake_site' ? '偽サイト' : '契約違反'}
                 </span>
-                <span className={`status-badge ${alert.is_resolved ? 'resolved' : 'unresolved'}`}>
+                <span className={`status-badge ${alert.is_resolved ? 'resolved' : 'unresolved'}`} title={alert.is_resolved ? 'このアラートは対応済みです' : 'このアラートは未対応です'}>
                   {alert.is_resolved ? '解決済み' : '未解決'}
                 </span>
                 <span className="alert-date">

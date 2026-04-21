@@ -152,7 +152,7 @@ class TestCategoryCRUDRoundTrip:
 
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Step 1: Create a category via POST
         payload = {"name": name}
@@ -350,7 +350,7 @@ class TestCategoryDeleteUncategorize:
 
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Step 1: Create a category
         payload = {"name": name}
@@ -445,7 +445,7 @@ class TestCategoryImmediateReflection:
 
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Step 1: Create a category via POST
         payload = {"name": name}

@@ -102,11 +102,15 @@ def db_session(engine, tables):
 
 @pytest.fixture
 def client(db_session):
-    """FastAPI TestClient with db_session injected via dependency override."""
+    """FastAPI TestClient with db_session injected via dependency override.
+
+    Passes X-API-Key header so that get_current_user_or_api_key passes
+    without a real JWT (legacy API-key path).
+    """
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as c:
+    with TestClient(app, headers={"X-API-Key": "dev-api-key"}) as c:
         yield c
     app.dependency_overrides.clear()

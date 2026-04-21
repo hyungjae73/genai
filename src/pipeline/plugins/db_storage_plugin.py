@@ -118,6 +118,9 @@ class DBStoragePlugin(CrawlPlugin):
                 else:
                     self._individual_insert(session, evidence_records, violations)
 
+                # Persist DarkPatternScore results to VerificationResult (Req 11, Task 5.6)
+                self._persist_dark_pattern_results(session, ctx)
+
                 session.commit()
 
                 ctx.metadata["dbstorage_strategy"] = strategy
@@ -149,6 +152,64 @@ class DBStoragePlugin(CrawlPlugin):
                     pass
 
         return ctx
+
+    def _persist_dark_pattern_results(self, session: Any, ctx: CrawlContext) -> None:
+        """Persist DarkPatternScore results to VerificationResult and Violation records.
+
+        Writes darkpattern_score, darkpattern_subscores, dark_pattern_types from
+        ctx.metadata to the most recent VerificationResult for this site.
+        Writes dark_pattern_category to Violation records.
+
+        Requirements: 11.1, 11.2, 11.3, 11.4, 14.1, 14.6 (Task 5.6)
+        """
+        dark_pattern_score = ctx.metadata.get("darkpattern_score")
+        if dark_pattern_score is None:
+            return  # No dark pattern data to persist
+
+        try:
+            from src.models import VerificationResult
+
+            # Find the most recent VerificationResult for this site
+            vr = (
+                session.query(VerificationResult)
+                .filter(VerificationResult.site_id == ctx.site.id)
+                .order_by(VerificationResult.created_at.desc())
+                .first()
+            )
+
+            if vr is not None:
+                vr.dark_pattern_score = dark_pattern_score
+                vr.dark_pattern_subscores = ctx.metadata.get("darkpattern_subscores")
+
+                # Collect detected dark pattern types from violations
+                dark_pattern_types = list({
+                    v.get("dark_pattern_category")
+                    for v in ctx.violations
+                    if v.get("dark_pattern_category")
+                })
+                vr.dark_pattern_types = dark_pattern_types if dark_pattern_types else None
+
+                session.add(vr)
+                logger.info(
+                    "Persisted dark_pattern_score=%.3f for site_id=%d",
+                    dark_pattern_score,
+                    ctx.site.id,
+                )
+
+                # 審査キューへ自動投入 (要件 2.3)
+                if dark_pattern_score >= 0.7:
+                    try:
+                        from src.review.service import ReviewService
+                        ReviewService(session).enqueue_from_dark_pattern(
+                            site_id=ctx.site.id,
+                            alert=None,
+                            score=dark_pattern_score,
+                        )
+                    except Exception as review_exc:
+                        logger.warning("ダークパターン審査キュー投入に失敗しました: %s", review_exc)
+
+        except Exception as exc:
+            logger.warning("Failed to persist dark pattern results: %s", exc)
 
     def _individual_insert(
         self,

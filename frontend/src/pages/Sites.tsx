@@ -25,11 +25,11 @@ interface Toast {
   type: 'success' | 'error' | 'warning';
 }
 
-const complianceStatusMap: Record<string, { label: string; variant: 'success' | 'danger' | 'warning' | 'neutral' }> = {
-  compliant: { label: '準拠', variant: 'success' },
-  violation: { label: '違反', variant: 'danger' },
-  pending: { label: '保留', variant: 'warning' },
-  error: { label: 'エラー', variant: 'neutral' },
+const complianceStatusMap: Record<string, { label: string; variant: 'success' | 'danger' | 'warning' | 'neutral'; description: string }> = {
+  compliant: { label: '準拠', variant: 'success', description: '契約条件に準拠しています' },
+  violation: { label: '違反', variant: 'danger', description: '契約条件の違反が検出されました' },
+  pending: { label: '保留', variant: 'warning', description: 'クロール未実行または検証待ちです' },
+  error: { label: 'エラー', variant: 'neutral', description: 'クロールまたは検証でエラーが発生しました' },
 };
 
 const statusFilterOptions = [
@@ -258,8 +258,8 @@ const Sites = () => {
       header: 'ステータス',
       render: (site) => {
         const status = site.compliance_status as string;
-        const info = complianceStatusMap[status] || { label: status, variant: 'neutral' as const };
-        return <Badge variant={info.variant} size="sm">{info.label}</Badge>;
+        const info = complianceStatusMap[status] || { label: status, variant: 'neutral' as const, description: '' };
+        return <Badge variant={info.variant} size="sm" title={info.description}>{info.label}</Badge>;
       },
     },
     {
@@ -336,69 +336,22 @@ const Sites = () => {
   return (
     <div className="sites">
       <div className="page-header">
-        <h1>監視対象サイト一覧 <HelpButton title="監視サイト一覧の使い方">
+        <h1>監視対象サイト一覧 <HelpButton title="このページの使い方">
           <div className="help-content">
-            <h3>ユーザーストーリー</h3>
-            <p>監視対象サイトの状態を確認し、クロールを実行したい</p>
+            <h3>できること</h3>
+            <ul>
+              <li>登録済みサイトの監視状態を一覧で確認</li>
+              <li>サイト名・URLで検索、ステータスや顧客でフィルタリング</li>
+              <li>新しい監視サイトの登録</li>
+            </ul>
 
-            <h3>検索・フィルター</h3>
-            <p>サイト名・URLで検索し、ステータスフィルター（準拠/違反/保留/エラー）や顧客フィルターで表示を絞り込めます。</p>
+            <h3>クロールの実行</h3>
+            <p>各サイトの「今すぐクロール」ボタンで最新データを取得します。完了すると結果が自動反映されます。</p>
 
-            <h3>今すぐクロール</h3>
-            <p>「今すぐクロール」ボタンでサイトの最新情報を取得できます。クロール完了後、結果が自動的に反映されます。</p>
+            <h3>結果の確認</h3>
+            <p>「最終クロール」列の日時をクリックすると、取得データの詳細（スクリーンショット・抽出データ・違反情報）を確認できます。</p>
 
-            <h3>クロール結果の確認</h3>
-            <p>最終クロール日時をクリックすると、クロール結果の詳細（取得日時・URL・ステータス・スクリーンショット）を確認できます。</p>
-
-            <h3>ステータスの意味</h3>
-            <div className="status-help">
-              <div className="status-help__item">
-                <div className="status-help__header">
-                  <Badge variant="success" size="sm">準拠</Badge>
-                  <span className="status-help__level">Compliant</span>
-                </div>
-                <p className="status-help__desc">
-                  最新のクロール・検証で、契約条件との違反が検出されなかった状態です。
-                  価格、決済方法、手数料、サブスクリプション条件の全てが契約通りに表示されています。
-                </p>
-              </div>
-
-              <div className="status-help__item">
-                <div className="status-help__header">
-                  <Badge variant="danger" size="sm">違反</Badge>
-                  <span className="status-help__level">Violation</span>
-                </div>
-                <p className="status-help__desc">
-                  契約条件との不一致が検出された状態です。
-                  価格の相違、許可外の決済方法の表示、手数料の不一致、
-                  サブスクリプション条件の違反などが含まれます。
-                </p>
-              </div>
-
-              <div className="status-help__item">
-                <div className="status-help__header">
-                  <Badge variant="warning" size="sm">保留</Badge>
-                  <span className="status-help__level">Pending</span>
-                </div>
-                <p className="status-help__desc">
-                  まだクロール・検証が実行されていない状態です。
-                  サイト登録直後のデフォルトステータスで、
-                  「今すぐクロール」ボタンで検証を開始できます。
-                </p>
-              </div>
-
-              <div className="status-help__item">
-                <div className="status-help__header">
-                  <Badge variant="neutral" size="sm">エラー</Badge>
-                  <span className="status-help__level">Error</span>
-                </div>
-                <p className="status-help__desc">
-                  クロールまたは検証処理自体が失敗した状態です。
-                  サイトへの接続不可、タイムアウト、サーバーエラーなどが原因として考えられます。
-                  時間をおいて再度クロールを実行してください。
-                </p>
-              </div>
-            </div>
+            <div className="help-tip">ステータスの意味はステータスフィルター横の ? ボタンで確認できます。</div>
           </div>
         </HelpButton></h1>
         <Button variant="primary" size="md" onClick={openCreateModal}>
@@ -422,6 +375,53 @@ const Sites = () => {
             options={statusFilterOptions}
             aria-label="ステータスフィルター"
           />
+          <HelpButton title="ステータスの意味">
+            <div className="status-help">
+              <div className="status-help__item">
+                <div className="status-help__header">
+                  <Badge variant="success" size="sm">準拠</Badge>
+                  <span className="status-help__level">Compliant</span>
+                </div>
+                <p className="status-help__desc">
+                  最新のクロール・検証で、契約条件との違反が検出されなかった状態です。
+                  価格、決済方法、手数料、サブスクリプション条件の全てが契約通りに表示されています。
+                </p>
+              </div>
+              <div className="status-help__item">
+                <div className="status-help__header">
+                  <Badge variant="danger" size="sm">違反</Badge>
+                  <span className="status-help__level">Violation</span>
+                </div>
+                <p className="status-help__desc">
+                  契約条件との不一致が検出された状態です。
+                  価格の相違、許可外の決済方法の表示、手数料の不一致、
+                  サブスクリプション条件の違反などが含まれます。
+                </p>
+              </div>
+              <div className="status-help__item">
+                <div className="status-help__header">
+                  <Badge variant="warning" size="sm">保留</Badge>
+                  <span className="status-help__level">Pending</span>
+                </div>
+                <p className="status-help__desc">
+                  まだクロール・検証が実行されていない状態です。
+                  サイト登録直後のデフォルトステータスで、
+                  「今すぐクロール」ボタンで検証を開始できます。
+                </p>
+              </div>
+              <div className="status-help__item">
+                <div className="status-help__header">
+                  <Badge variant="neutral" size="sm">エラー</Badge>
+                  <span className="status-help__level">Error</span>
+                </div>
+                <p className="status-help__desc">
+                  クロールまたは検証処理自体が失敗した状態です。
+                  サイトへの接続不可、タイムアウト、サーバーエラーなどが原因として考えられます。
+                  時間をおいて再度クロールを実行してください。
+                </p>
+              </div>
+            </div>
+          </HelpButton>
         </div>
         <Select
           label="顧客"
@@ -484,7 +484,7 @@ const Sites = () => {
               <div className="detail-row">
                 <span className="detail-label">スクリーンショット:</span>
                 <img
-                  src={crawlResult.screenshot_path}
+                  src={`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/${crawlResult.screenshot_path.replace(/^\//, '')}`}
                   alt="クロール時のスクリーンショット"
                   className="crawl-screenshot"
                 />

@@ -1,0 +1,15 @@
+{
+  "name": "Frontend-Backend Type Consistency Check",
+  "version": "2",
+  "description": "When api.ts is edited, verifies TypeScript types match backend Pydantic schemas. Scoped to api.ts only to avoid noise.",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/frontend/src/services/api.ts"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "api.ts was just edited. Quickly verify:\n1. Do new TypeScript interfaces match the backend Pydantic schemas? (field names, string/number/boolean types, optional '?' vs required)\n2. Is there a corresponding API function for each new interface?\n3. Are datetime fields typed as 'string' (ISO 8601 from backend)?\nOnly flag actual mismatches — skip if everything looks consistent."
+  }
+}

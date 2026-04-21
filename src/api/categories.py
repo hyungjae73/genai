@@ -11,6 +11,7 @@ from src.api.schemas import (
     CategoryUpdate,
     CategoryResponse,
 )
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import Category, MonitoringSite, ContractCondition
 
@@ -18,14 +19,14 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[CategoryResponse])
-async def get_categories(db: Session = Depends(get_db)):
+async def get_categories(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get all categories ordered by name."""
     categories = db.query(Category).order_by(Category.name).all()
     return categories
 
 
 @router.post("/", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
+async def create_category(category: CategoryCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Create a new category. Returns 409 if name already exists."""
     existing = db.query(Category).filter(Category.name == category.name).first()
     if existing:
@@ -52,6 +53,7 @@ async def update_category(
     category_id: int,
     category_update: CategoryUpdate,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Update a category. Returns 404 if not found, 409 if name conflict."""
     category = db.query(Category).filter(Category.id == category_id).first()
@@ -86,7 +88,7 @@ async def update_category(
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_category(category_id: int, db: Session = Depends(get_db)):
+async def delete_category(category_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a category.
 

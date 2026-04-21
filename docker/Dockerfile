@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 libxshmfence1 fonts-liberation \
     xdg-utils wget \
     tesseract-ocr tesseract-ocr-jpn \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
@@ -39,5 +40,6 @@ RUN mkdir -p /app/screenshots && chown -R appuser:appuser /app
 RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8000
+USER appuser
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -92,7 +92,8 @@ class ContractConditionBase(BaseModel):
 
 class ContractConditionCreate(ContractConditionBase):
     """Schema for creating a contract condition."""
-    pass
+    dynamic_fields: Optional[dict[str, Any]] = None
+    category_id: Optional[int] = None
 
 
 class ContractConditionUpdate(BaseModel):
@@ -101,6 +102,8 @@ class ContractConditionUpdate(BaseModel):
     payment_methods: Optional[dict[str, Any]] = None
     fees: Optional[dict[str, Any]] = None
     subscription_terms: Optional[dict[str, Any]] = None
+    dynamic_fields: Optional[dict[str, Any]] = None
+    category_id: Optional[int] = None
 
 
 class ContractConditionResponse(ContractConditionBase):
@@ -109,6 +112,8 @@ class ContractConditionResponse(ContractConditionBase):
     version: int
     is_current: bool
     created_at: datetime
+    dynamic_fields: Optional[dict[str, Any]] = None
+    category_id: Optional[int] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -448,5 +453,185 @@ class ScrapingTaskResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ------------------------------------------------------------------
+# Notification schemas (Requirements: 9.3, 10.2)
+# ------------------------------------------------------------------
+
+class NotificationConfigResponse(BaseModel):
+    """Schema for notification config response. Webhook URL is masked."""
+    slack_enabled: bool
+    slack_webhook_url: Optional[str] = None
+    slack_channel: str
+    email_enabled: bool
+    email_recipients: list[str]
+    suppression_window_hours: int
+
+
+class NotificationConfigUpdate(BaseModel):
+    """Schema for updating notification config. All fields optional."""
+    slack_enabled: Optional[bool] = None
+    slack_webhook_url: Optional[str] = None
+    slack_channel: Optional[str] = None
+    email_enabled: Optional[bool] = None
+    additional_email_recipients: Optional[list[str]] = None
+    suppression_window_hours: Optional[int] = Field(None, ge=1, le=168)
+
+
+class NotificationHistoryResponse(BaseModel):
+    """Schema for a single notification history record."""
+    id: int
+    violation_type: str
+    channel: str
+    recipient: str
+    status: str
+    sent_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedNotificationHistoryResponse(BaseModel):
+    """Paginated response for notification history."""
+    items: list[NotificationHistoryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+# ------------------------------------------------------------------ #
+# 審査ワークフロー スキーマ (manual-review-workflow)
+# 要件: 5.5, 9.1-9.6
+# ------------------------------------------------------------------ #
+
+class ReviewItemResponse(BaseModel):
+    """審査案件レスポンス。"""
+    id: int
+    alert_id: Optional[int]
+    site_id: int
+    review_type: str   # "violation" | "dark_pattern" | "fake_site"
+    status: str        # "pending" | "in_review" | "approved" | "rejected" | "escalated"
+    priority: str      # "critical" | "high" | "medium" | "low"
+    assigned_to: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedReviewResponse(BaseModel):
+    """ページネーション付き審査案件一覧レスポンス。"""
+    items: list[ReviewItemResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class ReviewDecisionRequest(BaseModel):
+    """審査判定リクエスト。"""
+    decision: str
+    comment: str = Field(..., min_length=1)
+
+
+class AssignReviewerRequest(BaseModel):
+    """担当者割り当てリクエスト。"""
+    reviewer_id: int
+
+
+class ReviewDecisionResponse(BaseModel):
+    """審査判定レスポンス。"""
+    id: int
+    review_item_id: int
+    reviewer_id: int
+    decision: str
+    comment: str
+    review_stage: str  # "primary" | "secondary"
+    decided_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AlertDetailInReview(BaseModel):
+    """審査詳細内の Alert 情報。"""
+    id: int
+    severity: str
+    message: str
+    alert_type: str
+    created_at: datetime
+    fake_domain: Optional[str] = None
+    domain_similarity_score: Optional[float] = None
+    content_similarity_score: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ViolationDetailInReview(BaseModel):
+    """審査詳細内の Violation 情報。"""
+    id: int
+    violation_type: str
+    expected_value: dict
+    actual_value: dict
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DarkPatternDetailInReview(BaseModel):
+    """審査詳細内のダークパターン情報。"""
+    dark_pattern_score: Optional[float]
+    dark_pattern_types: Optional[dict]
+
+
+class FakeSiteDetailInReview(BaseModel):
+    """審査詳細内の偽サイト情報。"""
+    fake_domain: Optional[str]
+    domain_similarity_score: Optional[float]
+    content_similarity_score: Optional[float]
+
+
+class SiteBasicInfo(BaseModel):
+    """審査詳細内のサイト基本情報。"""
+    id: int
+    name: str
+    url: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReviewDetailResponse(BaseModel):
+    """審査案件詳細レスポンス（統合ビュー）。"""
+    review_item: ReviewItemResponse
+    alert: Optional[AlertDetailInReview]
+    violation: Optional[ViolationDetailInReview]
+    dark_pattern: Optional[DarkPatternDetailInReview]
+    fake_site: Optional[FakeSiteDetailInReview]
+    site: Optional[SiteBasicInfo]
+    decisions: list[ReviewDecisionResponse]
+
+
+class ReviewStatsResponse(BaseModel):
+    """審査統計レスポンス。"""
+    by_status: dict[str, int]       # {"pending": 5, "in_review": 3, ...}
+    by_priority: dict[str, int]     # pending のみ
+    by_review_type: dict[str, int]  # pending のみ
+
+
+# ------------------------------------------------------------------ #
+# 検証フロー再構築スキーマ (verification-flow-restructure)
+# 要件: 11.1-11.5
+# ------------------------------------------------------------------ #
+
+class EvidenceRecordResponse(BaseModel):
+    """証拠保全レコードレスポンス。"""
+    id: int
+    verification_result_id: int
+    variant_name: str
+    screenshot_path: str
+    roi_image_path: Optional[str] = None
+    ocr_text: str
+    ocr_confidence: float
+    evidence_type: str
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

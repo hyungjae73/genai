@@ -478,6 +478,11 @@ def _make_mock_browser(connected=True):
     page.is_closed.return_value = False
     page.close = AsyncMock()
     browser.new_page = AsyncMock(return_value=page)
+    # stealth_browser.py calls await browser.new_context(...)
+    context = MagicMock()
+    context.new_page = AsyncMock(return_value=page)
+    context.close = AsyncMock()
+    browser.new_context = AsyncMock(return_value=context)
     return browser
 
 
@@ -2366,7 +2371,7 @@ class TestJSONValidationAtAPIBoundary:
 
         app.dependency_overrides[_real_get_db] = fake_db
         try:
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             resp = client.put(
                 "/api/sites/1",
                 json={"pre_capture_script": bad_json},
@@ -2404,7 +2409,7 @@ class TestJSONValidationAtAPIBoundary:
 
         app.dependency_overrides[_real_get_db] = fake_db
         try:
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
             resp = client.put(
                 f"/api/sites/{site_id}",
                 json={"crawl_priority": "high"},

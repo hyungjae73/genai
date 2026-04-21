@@ -4,15 +4,16 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
-  Category,
-  CategoryCreate,
 } from '../../services/api';
+import type { Category, CategoryCreate } from '../../services/api';
 
 interface CategoryManagerProps {
   onCategoryChange?: () => void;
+  onCategorySelect?: (category: Category) => void;
+  selectedCategoryId?: number | null;
 }
 
-const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange }) => {
+const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange, onCategorySelect, selectedCategoryId }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -244,7 +245,11 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange }) =
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {categories.map((category) => (
-                <tr key={category.id} className="hover:bg-gray-50">
+                <tr
+                  key={category.id}
+                  className={`hover:bg-gray-50 cursor-pointer${selectedCategoryId === category.id ? ' bg-blue-50' : ''}`}
+                  onClick={() => onCategorySelect?.(category)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div
                       className="w-8 h-8 rounded border border-gray-300"

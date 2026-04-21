@@ -1,0 +1,217 @@
+# Implementation Plan: Stealth Browser Hardening
+
+## Overview
+
+Incremental implementation of Phases 2–4 for bot detection hardening. Phase 1 is already implemented (StealthBrowserFactory, ScrapingConfig, BrowserPool refactoring). Tasks proceed in dependency order: Phase 1 tests → Phase 2 (SessionManager) → Phase 2.5 (ValidationStage + VLM) → Phase 3 (PageFetcher Protocol + FetcherRouter + SaaSFetcher) → Phase 4 (Telemetry + Adaptive Evasion). All code is Python, tests use pytest + Hypothesis.
+
+## Tasks
+
+- [x] 1. Phase 1 — Tests for existing implementation
+  - [x] 1.1 Write property tests for Properties 1–2 (factory config propagation, jitter bounds)
+    - Create `genai/tests/test_stealth_hardening_properties.py`
+    - **Property 1: Factory configuration propagation** — generate ScrapingConfig with varied UA, viewport pool, proxy URL; verify StealthBrowserFactory produces matching context args
+    - **Property 2: Jitter delay is within configured bounds** — generate min/max pairs; verify `get_jitter()` returns value in `[min, max]`
+    - **Validates: Requirements 1.2, 1.3, 2.1, 3.3**
+  - [x] 1.2 Write unit tests for existing Phase 1 code
+    - Add tests to `genai/tests/test_stealth_hardening.py` covering StealthBrowserFactory context creation, stealth toggle, proxy passthrough
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.3_
+  - [x] 1.3 Update existing test mocks in test_browser_pool.py, test_crawler.py, test_screenshot_manager.py
+    - Ensure mocks align with StealthBrowserFactory API (create_browser, create_context, apply_stealth)
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+
+- [x] 2. Phase 2 — Redis SessionManager
+  - [x] 2.1 Implement SessionManager class
+    - Create `genai/src/pipeline/session_manager.py`
+    - Cookie CRUD: `get_cookies`, `save_cookies`, `delete_cookies` with Redis `SETEX` and structured key `session:{site_id}:cookies`
+    - TTL management (default 3600s)
+    - `is_expired_response(status_code)` returning True for 401/403
+    - Distributed lock: `acquire_login_lock`, `release_login_lock` with `login_lock:{site_id}` key and TTL=120s
+    - `_active_locks` dict tracking lock instances per site_id
+    - `verify_lock_held(site_id)` — check lock still held before Cookie save (CTO Review Fix)
+    - `mark_login_failed`, `get_session_status`
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 7.1, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3_
+  - [x] 2.2 Write property test for Cookie storage round-trip
+    - **Property 3: Cookie storage round-trip**
+    - **Validates: Requirements 6.1, 9.3**
+  - [x] 2.3 Write property test for expired session detection
+    - **Property 5: Expired session detection**
+    - **Validates: Requirements 7.1**
+  - [x] 2.4 Write property test for distributed lock mutual exclusion
+    - **Property 6: Distributed lock mutual exclusion**
+    - **Validates: Requirements 8.1, 8.2**
+  - [x] 2.5 Write property test for distributed lock release round-trip
+    - **Property 7: Distributed lock release round-trip**
+    - **Validates: Requirements 8.3, 8.4**
+  - [x] 2.6 Implement login Celery task with 3 retries
+    - Add `perform_login` task to `genai/src/pipeline_tasks.py` (or new file) with `max_retries=3`, `autoretry_for`, exponential backoff
+    - Acquire distributed lock before login, verify lock held before saving cookies, release lock on completion
+    - Mark `login_failed` after 3 retries exhausted
+    - _Requirements: 7.2, 7.3, 7.4, 8.1, 8.3_
+
+- [x] 3. Checkpoint — Phase 2 complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Phase 2.5 — ValidationStage + VLM
+  - [x] 4.1 Implement ValidationStage CrawlPlugin
+    - Create `genai/src/pipeline/plugins/validation_stage.py`
+    - Anti-bot signature registry: CSS selectors (`#challenge-running`, `[class*='captcha']`, `#ak-challenge`), headers (`cf-ray`), cookies (`_px`, `datadome`)
+    - Configurable via `ANTIBOT_SIGNATURES_JSON` env var or built-in defaults
+    - DOM anomaly detection: body size < 1KB **AND** Text-to-Tag Ratio < 5.0 (CTO Review Fix — not just body size)
+    - DOM hash (pHash): `_compute_dom_hash` extracts tag structure only, SHA-256 truncated to 16 chars
+    - Redis pHash cache: `_is_cached_normal(dom_hash)` checks `vlm_cache:{dom_hash}` key (TTL 86400s) — short-circuits VLM call if NORMAL cached
+    - Label outputs: `SOFT_BLOCKED`, `SUCCESS`, `NORMAL` (cache hit)
+    - `_enqueue_vlm_classification` sets metadata flags for async Celery task
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
+  - [x] 4.2 Write property test for Soft Block detection
+    - **Property 12: Soft Block detection via DOM analysis**
+    - **Validates: Requirements 15.2, 15.3**
+  - [x] 4.3 Implement VLM classification Celery task
+    - Create `genai/src/pipeline/vlm_tasks.py`
+    - Async Celery task: capture screenshot, send to VLM API (Gemini/Claude Vision) with zero-shot prompt
+    - Classification labels: `CAPTCHA_CHALLENGE`, `ACCESS_DENIED`, `CONTENT_CHANGED`, `NORMAL`
+    - Fallback to `UNKNOWN_BLOCK` on VLM API error
+    - Rate limiting: max `vlm_rate_limit_per_site_hour` calls per site per hour (default 5)
+    - Cache NORMAL results in Redis `vlm_cache:{dom_hash}` with 86400s TTL
+    - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6_
+  - [x] 4.4 Write property test for VLM classification label mapping
+    - **Property 22: VLM classification label mapping**
+    - **Validates: Requirements 16.3**
+  - [x] 4.5 Write property test for VLM rate limiting per site
+    - **Property 23: VLM rate limiting per site**
+    - **Validates: Requirements 16.6**
+  - [x] 4.6 Extend ScrapingConfig with Phase 2.5 fields
+    - Add to `genai/src/scraping_config.py`: `vlm_api_key` (SecretStr), `vlm_provider`, `vlm_rate_limit_per_site_hour`, `antibot_signatures_json`
+    - _Requirements: 15.5, 16.4_
+
+- [x] 5. Checkpoint — Phase 2.5 complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. Phase 3 — PageFetcher Protocol + FetcherRouter + SaaSFetcher
+  - [x] 6.1 Create PageFetcher Protocol and FetchResult dataclass
+    - Create `genai/src/pipeline/fetcher_protocol.py`
+    - `PageFetcher` as `@runtime_checkable Protocol` with `async def fetch(url, site) -> FetchResult`
+    - `FetchResult` dataclass: `html`, `status_code`, `headers`
+    - _Requirements: 10.1, 10.4_
+  - [x] 6.2 Implement StealthPlaywrightFetcher
+    - Create `genai/src/pipeline/stealth_playwright_fetcher.py`
+    - Uses BrowserPool + SessionManager for Cookie injection/persistence
+    - Implements PageFetcher protocol
+    - _Requirements: 10.2_
+  - [x] 6.3 Implement SaaSFetcher
+    - Create `genai/src/pipeline/saas_fetcher.py`
+    - httpx-based HTTP GET to ZenRows / ScraperAPI endpoints
+    - `_build_params(url)` with provider-specific API key and URL params
+    - Implements PageFetcher protocol
+    - _Requirements: 10.3, 12.1, 12.2, 12.4, 12.5_
+  - [x] 6.4 Write property test for SaaS provider params
+    - **Property 9: SaaSFetcher builds correct provider params**
+    - **Validates: Requirements 12.2, 12.5**
+  - [x] 6.5 Implement FetcherRouter with retry logic
+    - Create `genai/src/pipeline/fetcher_router.py`
+    - Route by `site.is_hard_target`: True → SaaSFetcher, False → StealthPlaywrightFetcher
+    - SaaS retry: `SAAS_BASE_DELAY=5` (NOT 30), exponential backoff + `Jitter(0-3s)`, `max_retries=5`
+    - Mathematical constraint: max total wait = 155 + 15 = 170s < `soft_time_limit=180s`
+    - `SaaSBlockedError` on all retries exhausted — NO Playwright fallback for hard targets
+    - Retryable: `{429, 500, 502, 503, 504}`. Non-retryable 4xx (except 429): immediate fail
+    - _Requirements: 11.1, 11.2, 11.3, 13.1, 13.2, 13.3, 13.4, 14.1, 14.2_
+  - [x] 6.6 Write property test for FetcherRouter routing
+    - **Property 8: FetcherRouter routes by is_hard_target**
+    - **Validates: Requirements 11.1, 11.2, 11.3**
+  - [x] 6.7 Write property test for SaaS retry classification
+    - **Property 10: SaaS retry classification**
+    - **Validates: Requirements 13.1, 13.4**
+  - [x] 6.8 Write property test for suicide fallback prohibition
+    - **Property 11: Suicide fallback prohibition (SAAS_BLOCKED)**
+    - **Validates: Requirements 13.2**
+  - [x] 6.9 Add is_hard_target column to MonitoringSite + Alembic migration
+    - Add `is_hard_target: Mapped[bool]` column to `MonitoringSite` in `genai/src/models.py` (default=False, server_default="false")
+    - Create Alembic migration: `ALTER TABLE monitoring_sites ADD COLUMN is_hard_target BOOLEAN NOT NULL DEFAULT false`
+    - _Requirements: 11.4_
+  - [x] 6.10 Extend ScrapingConfig with Phase 3 fields
+    - Add to `genai/src/scraping_config.py`: `saas_api_key` (SecretStr), `saas_provider` (default "zenrows")
+    - _Requirements: 12.3_
+  - [x] 6.11 Add SAAS_BLOCKED status and SaaSBlockedError
+    - Define `SaaSBlockedError` exception in `genai/src/pipeline/fetcher_router.py`
+    - Add `SAAS_BLOCKED` to crawl status enum/constants
+    - _Requirements: 13.2, 13.3_
+
+- [x] 7. Checkpoint — Phase 3 complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 8. Phase 4 — Telemetry + Adaptive Evasion Engine
+  - [x] 8.1 Implement TelemetryCollector
+    - Create `genai/src/pipeline/telemetry_collector.py`
+    - Redis Sorted Set: key `telemetry:{site_id}:results`, score=timestamp
+    - `record(site_id, entry)`: ZADD + EXPIRE(86400s) + ZREMRANGEBYSCORE for pruning
+    - `get_success_rate(site_id, window_seconds)`: ZRANGEBYSCORE, count status_code=200 / total
+    - Handle total=0 → success_rate=1.0
+    - _Requirements: 17.1, 17.2, 17.3_
+  - [x] 8.2 Write property test for telemetry storage round-trip
+    - **Property 14: Telemetry storage round-trip**
+    - **Validates: Requirements 17.2**
+  - [x] 8.3 Write property test for success rate calculation
+    - **Property 15: Success rate calculation correctness**
+    - **Validates: Requirements 17.3**
+  - [x] 8.4 Write property test for telemetry entry completeness
+    - **Property 13: Telemetry entry completeness**
+    - **Validates: Requirements 15.4, 17.1**
+  - [x] 8.5 Implement AdaptiveEvasionEngine
+    - Create `genai/src/pipeline/adaptive_evasion.py`
+    - Epsilon-Greedy arm selection with configurable epsilon (default 0.2)
+    - Arms: `playwright_proxy_a`, `playwright_proxy_b`, `saas_zenrows`, `saas_scraperapi`
+    - **Sliding Window (Redis List, N=100)** for outcome tracking — NOT cumulative counters (CTO Review Fix)
+    - `record_outcome`: LPUSH + LTRIM to keep latest 100 results per arm
+    - `_get_arm_success_rate`: LRANGE → count "1"s / total
+    - `is_exploring`, `enter_exploration`, `exit_exploration` via Redis flag key
+    - `select_arm(site_id, is_hard_target)`: hard targets restricted to SaaS arms only (Req 13 / suicide fallback prohibition)
+    - `check_convergence`: all arms ≥ min_trials → return best arm
+    - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8_
+  - [x] 8.6 Write property test for Epsilon-Greedy arm selection
+    - **Property 17: Epsilon-Greedy arm selection distribution**
+    - **Validates: Requirements 18.2**
+  - [x] 8.7 Write property test for arm outcome tracking
+    - **Property 18: Arm outcome tracking round-trip**
+    - **Validates: Requirements 18.3**
+  - [x] 8.8 Write property test for bandit convergence
+    - **Property 19: Bandit convergence selects best arm**
+    - **Validates: Requirements 18.4, 18.6**
+  - [x] 8.9 Write property test for hard target arm restriction
+    - **Property 21: Bandit respects suicide fallback prohibition**
+    - **Validates: Requirements 18.8, 13.2**
+  - [x] 8.10 Write property test for anomaly detection triggering exploration
+    - **Property 16: Anomaly detection triggers exploration**
+    - **Validates: Requirements 17.4, 18.1**
+  - [x] 8.11 Write property test for continuous adaptation re-exploration
+    - **Property 20: Continuous adaptation re-exploration**
+    - **Validates: Requirements 18.7**
+  - [x] 8.12 Implement fetch telemetry API endpoint
+    - Add `GET /api/sites/{site_id}/fetch-telemetry` to `genai/src/api/monitoring.py`
+    - Returns: current success rate, total attempts, block breakdown for trailing 1-hour window
+    - _Requirements: 17.5_
+  - [x] 8.13 Extend ScrapingConfig with Phase 4 fields
+    - Add to `genai/src/scraping_config.py`: `adaptive_success_threshold` (0.8), `adaptive_epsilon` (0.2), `adaptive_min_trials` (20)
+    - _Requirements: 17.4, 18.2, 18.4_
+
+- [x] 9. Phase 4 — Wire Adaptive Engine into FetcherRouter
+  - [x] 9.1 Integrate AdaptiveEvasionEngine into FetcherRouter
+    - Update `FetcherRouter.__init__` to accept optional `bandit_engine`
+    - In `fetch()`: check `bandit.is_exploring(site_id)` → delegate to bandit arm selection
+    - After fetch: record outcome via TelemetryCollector + AdaptiveEvasionEngine
+    - On convergence: update MonitoringSite.is_hard_target and plugin_config
+    - _Requirements: 18.1, 18.5, 18.6, 18.7_
+  - [x] 9.2 Write integration tests for FetcherRouter + AdaptiveEvasionEngine
+    - Test exploration mode lifecycle: anomaly → explore → converge → exit
+    - Test re-exploration on success rate drop
+    - _Requirements: 18.1, 18.6, 18.7_
+
+- [x] 10. Final checkpoint — Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties from the design document
+- Unit tests validate specific examples and edge cases
+- Critical design constraints enforced: SAAS_BASE_DELAY=5 (not 30), Sliding Window N=100 (not cumulative counters), pHash cache before VLM, verify_lock_held() before Cookie save, Text-to-Tag Ratio for DOM anomaly

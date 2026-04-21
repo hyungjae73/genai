@@ -85,92 +85,25 @@ const Alerts = () => {
   return (
     <div className="alerts">
       <div className="page-header">
-        <h1>アラート一覧 <HelpButton title="アラート一覧の使い方">
+        <h1>アラート一覧 <HelpButton title="このページの使い方">
           <div className="help-content">
-            <h3>ユーザーストーリー</h3>
-            <p>検出された問題を重要度別に確認し、対応の優先順位を判断したい</p>
+            <h3>できること</h3>
+            <ul>
+              <li>検出された違反・偽サイトアラートを重要度別に確認</li>
+              <li>重要度（緊急/高/中/低）と種別（契約違反/偽サイト）でフィルタリング</li>
+              <li>解決済みアラートの確認（半透明表示）</li>
+            </ul>
 
-            <h3>重要度フィルター</h3>
-            <p>重要度フィルター（緊急/高/中/低）で、対応が必要なアラートを絞り込めます。</p>
+            <h3>カードの見方</h3>
+            <p>左ボーダー色が重要度を示します: 赤=緊急・高、黄=中、青=低。偽サイトアラートにはTakeDown対応バナーが表示されます。</p>
 
-            <h3>種別フィルター</h3>
-            <p>種別フィルター（契約違反/偽サイト）で、アラートの種類ごとに表示を切り替えられます。</p>
-
-            <h3>カードのボーダー色</h3>
-            <p>各アラートカードの左ボーダー色が重要度を示します。赤は緊急・高、黄色は中、青は低を表します。</p>
-
-            <h3>TakeDown対応バナー</h3>
-            <p>偽サイトアラートにはTakeDown対応バナーが表示されます。偽ドメインや類似度スコアを確認し、対応を進めてください。</p>
-
-            <h3>解決済みアラート</h3>
-            <p>解決済みアラートは半透明で表示されます。対応完了したアラートを視覚的に区別できます。</p>
-
-            <h3>重要度の詳細</h3>
-            <div className="severity-help">
-              <div className="severity-help__item">
-                <div className="severity-help__header">
-                  <Badge variant="danger" size="sm">緊急</Badge>
-                  <span className="severity-help__level">Critical</span>
-                </div>
-                <p className="severity-help__desc">
-                  即時対応が必要な重大な問題です。偽サイトの検知確定や、価格がゼロになるなど、
-                  顧客に直接的な被害が発生する可能性がある場合に発行されます。
-                </p>
-                <ul className="severity-help__examples">
-                  <li>偽サイト検知（確定）</li>
-                  <li>価格ゼロ検出（商品が無料表示になっている）</li>
-                </ul>
-              </div>
-
-              <div className="severity-help__item">
-                <div className="severity-help__header">
-                  <Badge variant="danger" size="sm">高</Badge>
-                  <span className="severity-help__level">High</span>
-                </div>
-                <p className="severity-help__desc">
-                  契約条件との重要な不一致が検出された場合に発行されます。
-                  早急な確認と対応が推奨されます。
-                </p>
-                <ul className="severity-help__examples">
-                  <li>契約価格との不一致</li>
-                  <li>必須決済方法の欠落</li>
-                  <li>サブスクリプション条件の違反</li>
-                  <li>大幅な価格変動の検出</li>
-                </ul>
-              </div>
-
-              <div className="severity-help__item">
-                <div className="severity-help__header">
-                  <Badge variant="warning" size="sm">中</Badge>
-                  <span className="severity-help__level">Medium</span>
-                </div>
-                <p className="severity-help__desc">
-                  注意が必要ですが、即時対応は不要な問題です。
-                  次回の定期確認時に対応を検討してください。
-                </p>
-                <ul className="severity-help__examples">
-                  <li>許可外の決済方法が表示されている</li>
-                  <li>手数料の不一致</li>
-                  <li>契約期間の表示ずれ</li>
-                  <li>解約ポリシーの不一致</li>
-                </ul>
-              </div>
-
-              <div className="severity-help__item">
-                <div className="severity-help__header">
-                  <Badge variant="info" size="sm">低</Badge>
-                  <span className="severity-help__level">Low</span>
-                </div>
-                <p className="severity-help__desc">
-                  軽微な問題や情報提供レベルの通知です。
-                  対応の優先度は低く、必要に応じて確認してください。
-                </p>
-                <ul className="severity-help__examples">
-                  <li>軽微な表示の差異</li>
-                  <li>情報提供レベルの変更通知</li>
-                </ul>
-              </div>
-            </div>
+            <h3>重要度の目安</h3>
+            <ul>
+              <li><strong>緊急</strong> — 即時対応（偽サイト確定、価格ゼロ等）</li>
+              <li><strong>高</strong> — 早急な確認（価格不一致、必須決済方法欠落等）</li>
+              <li><strong>中</strong> — 次回確認時に対応（手数料不一致、解約ポリシーずれ等）</li>
+              <li><strong>低</strong> — 必要に応じて確認（軽微な表示差異等）</li>
+            </ul>
           </div>
         </HelpButton></h1>
       </div>

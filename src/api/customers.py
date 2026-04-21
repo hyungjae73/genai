@@ -2,15 +2,17 @@
 API endpoints for customer management.
 """
 
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
-from typing import List
 
 from src.api.schemas import (
     CustomerCreate,
     CustomerUpdate,
     CustomerResponse
 )
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import Customer
 
@@ -18,7 +20,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
-async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
+async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Create a new customer."""
     # Check if email already exists
     existing = db.query(Customer).filter(Customer.email == customer.email).first()
@@ -47,7 +49,8 @@ async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db
 @router.get("/", response_model=List[CustomerResponse])
 async def get_customers(
     active_only: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Get all customers."""
     query = db.query(Customer)
@@ -60,7 +63,7 @@ async def get_customers(
 
 
 @router.get("/{customer_id}", response_model=CustomerResponse)
-async def get_customer(customer_id: int, db: Session = Depends(get_db)):
+async def get_customer(customer_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific customer."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     
@@ -77,7 +80,8 @@ async def get_customer(customer_id: int, db: Session = Depends(get_db)):
 async def update_customer(
     customer_id: int,
     customer_update: CustomerUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Update a customer."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
@@ -112,7 +116,7 @@ async def update_customer(
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+async def delete_customer(customer_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a customer.
     

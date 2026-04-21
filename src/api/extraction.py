@@ -14,6 +14,7 @@ from src.api.schemas import (
     ExtractedDataUpdate,
     FieldSuggestionResponse,
 )
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import ExtractedData, CrawlResult
 from src.ocr_engine import OCREngine
@@ -52,7 +53,7 @@ def _infer_field_type(value: str) -> str:
 
 
 @router.post("/extract/{screenshot_id}", response_model=ExtractedDataResponse, status_code=status.HTTP_201_CREATED)
-async def extract_data(screenshot_id: int, db: Session = Depends(get_db)):
+async def extract_data(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Run OCR extraction on a screenshot.
 
@@ -122,7 +123,7 @@ async def extract_data(screenshot_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/results/{screenshot_id}", response_model=ExtractedDataResponse)
-async def get_extraction_results(screenshot_id: int, db: Session = Depends(get_db)):
+async def get_extraction_results(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get extracted data for a screenshot.
 
@@ -147,6 +148,7 @@ async def update_extraction_results(
     extracted_data_id: int,
     update: ExtractedDataUpdate,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Update extracted data (user corrections).
@@ -178,7 +180,7 @@ async def update_extraction_results(
     "/suggest-fields/{screenshot_id}",
     response_model=List[FieldSuggestionResponse],
 )
-async def suggest_fields(screenshot_id: int, db: Session = Depends(get_db)):
+async def suggest_fields(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Analyze extracted data and suggest field schemas.
 

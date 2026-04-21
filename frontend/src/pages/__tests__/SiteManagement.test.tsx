@@ -21,6 +21,21 @@ vi.mock('../../hooks/useAutoRefresh', () => ({
   useAutoRefresh: vi.fn(),
 }));
 
+// Mock AuthContext so ProtectedRoute allows access
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 1, username: 'admin', role: 'admin' },
+    accessToken: 'test-token',
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    refreshToken: vi.fn(),
+    hasRole: (...roles: string[]) => roles.includes('admin'),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 // Mock chart.js to avoid canvas issues in jsdom (needed when rendering App with Dashboard)
 vi.mock('react-chartjs-2', () => ({
   Line: () => <div data-testid="mock-chart">Chart</div>,

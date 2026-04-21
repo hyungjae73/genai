@@ -3,9 +3,12 @@ Unit tests for BrowserPool.
 
 Feature: crawl-pipeline-architecture
 Validates: Requirements 15.1, 15.2, 15.3, 15.4, 15.5, 15.6
+Updated for stealth-browser-hardening: Requirements 5.1, 5.2, 5.3, 5.4, 5.5
 
 All Playwright objects are mocked since Playwright may not be installed
-in the test environment.
+in the test environment. BrowserPool delegates browser creation, context
+creation, and stealth application to StealthBrowserFactory — mocks align
+with that API (create_browser, create_context, apply_stealth).
 """
 
 import asyncio
@@ -19,27 +22,58 @@ from src.pipeline.browser_pool import BrowserPool
 # --- Helpers ---
 
 
+def _make_mock_page():
+    """Create a mock Page with async close."""
+    page = MagicMock()
+    page.is_closed.return_value = False
+    page.close = AsyncMock()
+    return page
+
+
+def _make_mock_context(page=None):
+    """Create a mock BrowserContext that returns a mock page."""
+    context = MagicMock()
+    context.new_page = AsyncMock(return_value=page or _make_mock_page())
+    context.close = AsyncMock()
+    return context
+
+
 def _make_mock_browser(connected=True):
     """Create a mock Browser that reports the given connection state."""
     browser = MagicMock()
     browser.is_connected.return_value = connected
     browser.close = AsyncMock()
-
-    page = MagicMock()
-    page.is_closed.return_value = False
-    page.close = AsyncMock()
-    browser.new_page = AsyncMock(return_value=page)
-
     return browser
 
 
-def _make_mock_playwright(browsers=None):
-    """Create a mock Playwright instance that launches mock browsers."""
-    pw = MagicMock()
+def _make_mock_stealth_factory(browsers=None):
+    """Create a mock StealthBrowserFactory aligned with its real API.
+
+    The factory's create_browser, create_context, and apply_stealth are
+    all AsyncMocks. create_browser returns browsers from the provided list
+    (or generates them). create_context returns a mock context whose
+    new_page returns a mock page. apply_stealth is a no-op.
+    """
+    factory = MagicMock()
+
     if browsers is None:
         browsers = [_make_mock_browser() for _ in range(10)]
 
-    pw.chromium.launch = AsyncMock(side_effect=browsers)
+    factory.create_browser = AsyncMock(side_effect=browsers)
+
+    # create_context returns a fresh mock context each call
+    def _make_ctx(*args, **kwargs):
+        return _make_mock_context()
+
+    factory.create_context = AsyncMock(side_effect=_make_ctx)
+    factory.apply_stealth = AsyncMock()
+
+    return factory
+
+
+def _make_mock_playwright():
+    """Create a mock Playwright instance (used only for launcher)."""
+    pw = MagicMock()
     pw.stop = AsyncMock()
     return pw
 
@@ -78,19 +112,29 @@ class TestBrowserPoolInitialize:
     @pytest.mark.asyncio
     async def test_initialize_creates_browsers(self):
         mock_pw = _make_mock_playwright()
-        pool = BrowserPool(max_instances=3, playwright_launcher=_make_launcher(mock_pw))
+        mock_factory = _make_mock_stealth_factory()
+        pool = BrowserPool(
+            max_instances=3,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
 
         await pool.initialize()
 
         assert pool._initialized is True
         assert len(pool._instances) == 3
         assert pool._pool.qsize() == 3
-        assert mock_pw.chromium.launch.call_count == 3
+        assert mock_factory.create_browser.call_count == 3
 
     @pytest.mark.asyncio
     async def test_initialize_custom_count(self):
         mock_pw = _make_mock_playwright()
-        pool = BrowserPool(max_instances=5, playwright_launcher=_make_launcher(mock_pw))
+        mock_factory = _make_mock_stealth_factory()
+        pool = BrowserPool(
+            max_instances=5,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
 
         await pool.initialize()
 
@@ -104,21 +148,33 @@ class TestBrowserPoolAcquire:
     @pytest.mark.asyncio
     async def test_acquire_returns_browser_and_page(self):
         mock_browsers = [_make_mock_browser(), _make_mock_browser()]
-        mock_pw = _make_mock_playwright(mock_browsers)
-        pool = BrowserPool(max_instances=2, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory(mock_browsers)
+        pool = BrowserPool(
+            max_instances=2,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         browser, page = await pool.acquire()
 
         assert browser in mock_browsers
-        assert browser.new_page.called
+        # BrowserPool.acquire() delegates to stealth_factory.create_context + context.new_page
+        assert mock_factory.create_context.called
+        assert mock_factory.apply_stealth.called
         assert page is not None
 
     @pytest.mark.asyncio
     async def test_acquire_checks_is_connected(self):
         mock_browser = _make_mock_browser(connected=True)
-        mock_pw = _make_mock_playwright([mock_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([mock_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         await pool.acquire()
@@ -134,8 +190,13 @@ class TestBrowserPoolAcquire:
     async def test_acquire_waits_when_all_in_use(self):
         """When all instances are in use, acquire() awaits for one to be returned."""
         mock_browser = _make_mock_browser()
-        mock_pw = _make_mock_playwright([mock_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([mock_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         # Acquire the only instance
@@ -172,8 +233,13 @@ class TestBrowserPoolRelease:
     @pytest.mark.asyncio
     async def test_release_closes_page_and_returns_browser(self):
         mock_browser = _make_mock_browser()
-        mock_pw = _make_mock_playwright([mock_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([mock_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         browser, page = await pool.acquire()
@@ -187,8 +253,13 @@ class TestBrowserPoolRelease:
     @pytest.mark.asyncio
     async def test_release_handles_already_closed_page(self):
         mock_browser = _make_mock_browser()
-        mock_pw = _make_mock_playwright([mock_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([mock_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         browser, page = await pool.acquire()
@@ -207,15 +278,20 @@ class TestBrowserPoolCrashDetection:
     async def test_acquire_replaces_crashed_browser(self):
         crashed_browser = _make_mock_browser(connected=False)
         replacement_browser = _make_mock_browser(connected=True)
-        mock_pw = _make_mock_playwright([crashed_browser, replacement_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([crashed_browser, replacement_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         browser, page = await pool.acquire()
 
         # Should have gotten the replacement, not the crashed one
         assert browser is replacement_browser
-        assert replacement_browser.new_page.called
+        assert mock_factory.create_context.called
 
         # Crashed browser should have been removed from instances
         assert crashed_browser not in pool._instances
@@ -225,8 +301,13 @@ class TestBrowserPoolCrashDetection:
     async def test_release_replaces_crashed_browser(self):
         mock_browser = _make_mock_browser(connected=True)
         replacement_browser = _make_mock_browser(connected=True)
-        mock_pw = _make_mock_playwright([mock_browser, replacement_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([mock_browser, replacement_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         browser, page = await pool.acquire()
@@ -248,8 +329,13 @@ class TestBrowserPoolCrashDetection:
             _make_mock_browser(connected=True),
             _make_mock_browser(connected=True),  # replacement for crashed
         ]
-        mock_pw = _make_mock_playwright(browsers)
-        pool = BrowserPool(max_instances=2, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory(browsers)
+        pool = BrowserPool(
+            max_instances=2,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         # Acquire the crashed one (should be replaced)
@@ -266,8 +352,13 @@ class TestBrowserPoolShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_closes_all_browsers(self):
         mock_browsers = [_make_mock_browser(), _make_mock_browser()]
-        mock_pw = _make_mock_playwright(mock_browsers)
-        pool = BrowserPool(max_instances=2, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory(mock_browsers)
+        pool = BrowserPool(
+            max_instances=2,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         await pool.shutdown()
@@ -282,8 +373,13 @@ class TestBrowserPoolShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_handles_already_disconnected(self):
         mock_browser = _make_mock_browser(connected=False)
-        mock_pw = _make_mock_playwright([mock_browser])
-        pool = BrowserPool(max_instances=1, playwright_launcher=_make_launcher(mock_pw))
+        mock_pw = _make_mock_playwright()
+        mock_factory = _make_mock_stealth_factory([mock_browser])
+        pool = BrowserPool(
+            max_instances=1,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         # Should not raise even if browser is disconnected
@@ -293,7 +389,12 @@ class TestBrowserPoolShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_clears_pool(self):
         mock_pw = _make_mock_playwright()
-        pool = BrowserPool(max_instances=2, playwright_launcher=_make_launcher(mock_pw))
+        mock_factory = _make_mock_stealth_factory()
+        pool = BrowserPool(
+            max_instances=2,
+            playwright_launcher=_make_launcher(mock_pw),
+            stealth_factory=mock_factory,
+        )
         await pool.initialize()
 
         assert pool._pool.qsize() == 2

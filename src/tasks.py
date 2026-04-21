@@ -562,6 +562,12 @@ async def _scan_fake_sites_async(
                             )
                             session.add(alert)
                             session.commit()
+                            # 審査キューへ自動投入 (要件 2.1, 2.2)
+                            try:
+                                from src.review.service import ReviewService
+                                ReviewService(session).enqueue_from_alert(alert)
+                            except Exception as review_exc:
+                                logger.warning("審査キュー投入に失敗しました: %s", review_exc)
                         except Exception as db_exc:
                             session.rollback()
                             logger.error(

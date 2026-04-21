@@ -393,7 +393,13 @@ const ScreenshotTab = ({ siteId }: ScreenshotTabProps) => {
           )}
 
           <div className="extracted-data-status">
-            <span className={`status-badge status-${screenshot.extractedData.status}`}>
+            <span className={`status-badge status-${screenshot.extractedData.status}`} title={
+              screenshot.extractedData.status === 'pending'
+                ? '抽出データの確認待ちです'
+                : screenshot.extractedData.status === 'confirmed'
+                ? '抽出データが確認されました'
+                : '抽出データが却下されました'
+            }>
               {screenshot.extractedData.status === 'pending'
                 ? '確認待ち'
                 : screenshot.extractedData.status === 'confirmed'

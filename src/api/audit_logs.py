@@ -8,6 +8,7 @@ can display change history for any entity.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import AuditLog
 
@@ -19,6 +20,7 @@ async def get_audit_logs(
     entity_type: str,
     entity_id: int,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get audit logs for a specific entity.

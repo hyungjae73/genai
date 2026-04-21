@@ -148,110 +148,118 @@ class ScreenshotManager:
         # Per-step timeout: 60 % of overall so asyncio.wait_for can still fire
         step_timeout_ms = max(int(timeout * 1000 * 0.6), 5000)
 
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+        from src.pipeline.stealth_browser import StealthBrowserFactory
+
+        async with StealthBrowserFactory() as factory:
+            browser = await factory.create_browser()
             try:
-                page = await browser.new_page(
+                context = await factory.create_context(
+                    browser,
                     viewport={"width": 1920, "height": 1080},
                     device_scale_factor=2,
                 )
                 try:
-                    # Step 1: fast initial navigation
-                    await page.goto(
-                        url,
-                        wait_until="domcontentloaded",
-                        timeout=step_timeout_ms,
-                    )
-
-                    # Step 2: wait for network to settle (SPA data fetches)
+                    page = await context.new_page()
+                    await factory.apply_stealth(page)
                     try:
-                        await page.wait_for_load_state(
-                            "networkidle", timeout=step_timeout_ms
-                        )
-                    except Exception:
-                        # Some sites never reach networkidle; continue anyway
-                        logger.debug(
-                            "networkidle not reached within timeout for site_id=%d, continuing",
-                            site_id,
+                        # Step 1: fast initial navigation
+                        await page.goto(
+                            url,
+                            wait_until="domcontentloaded",
+                            timeout=step_timeout_ms,
                         )
 
-                    # Step 3: in-page readiness — fonts, images, lazy-load, DOM stable
-                    await page.evaluate("""() => {
-                        return new Promise((resolve) => {
-                            /* --- helpers --- */
-                            function waitForDomStable(quietMs, maxMs) {
-                                return new Promise((res) => {
-                                    let timer = null;
-                                    const observer = new MutationObserver(() => {
-                                        if (timer) clearTimeout(timer);
-                                        timer = setTimeout(() => { observer.disconnect(); res(); }, quietMs);
-                                    });
-                                    observer.observe(document.body, {
-                                        childList: true, subtree: true, attributes: true
-                                    });
-                                    // Kick-start: if DOM is already quiet, resolve after quietMs
-                                    timer = setTimeout(() => { observer.disconnect(); res(); }, maxMs);
-                                });
-                            }
+                        # Step 2: wait for network to settle (SPA data fetches)
+                        try:
+                            await page.wait_for_load_state(
+                                "networkidle", timeout=step_timeout_ms
+                            )
+                        except Exception:
+                            # Some sites never reach networkidle; continue anyway
+                            logger.debug(
+                                "networkidle not reached within timeout for site_id=%d, continuing",
+                                site_id,
+                            )
 
-                            function scrollAndWaitForLazy() {
-                                return new Promise((res) => {
-                                    // Scroll to bottom to trigger lazy-load images
-                                    const scrollStep = window.innerHeight;
-                                    let scrolled = 0;
-                                    const maxScroll = document.body.scrollHeight;
-                                    function step() {
-                                        scrolled += scrollStep;
-                                        window.scrollTo(0, scrolled);
-                                        if (scrolled < maxScroll) {
-                                            requestAnimationFrame(step);
-                                        } else {
-                                            // Scroll back to top and give lazy images time to load
-                                            window.scrollTo(0, 0);
-                                            setTimeout(res, 500);
+                        # Step 3: in-page readiness — fonts, images, lazy-load, DOM stable
+                        await page.evaluate("""() => {
+                            return new Promise((resolve) => {
+                                /* --- helpers --- */
+                                function waitForDomStable(quietMs, maxMs) {
+                                    return new Promise((res) => {
+                                        let timer = null;
+                                        const observer = new MutationObserver(() => {
+                                            if (timer) clearTimeout(timer);
+                                            timer = setTimeout(() => { observer.disconnect(); res(); }, quietMs);
+                                        });
+                                        observer.observe(document.body, {
+                                            childList: true, subtree: true, attributes: true
+                                        });
+                                        // Kick-start: if DOM is already quiet, resolve after quietMs
+                                        timer = setTimeout(() => { observer.disconnect(); res(); }, maxMs);
+                                    });
+                                }
+
+                                function scrollAndWaitForLazy() {
+                                    return new Promise((res) => {
+                                        // Scroll to bottom to trigger lazy-load images
+                                        const scrollStep = window.innerHeight;
+                                        let scrolled = 0;
+                                        const maxScroll = document.body.scrollHeight;
+                                        function step() {
+                                            scrolled += scrollStep;
+                                            window.scrollTo(0, scrolled);
+                                            if (scrolled < maxScroll) {
+                                                requestAnimationFrame(step);
+                                            } else {
+                                                // Scroll back to top and give lazy images time to load
+                                                window.scrollTo(0, 0);
+                                                setTimeout(res, 500);
+                                            }
                                         }
-                                    }
-                                    step();
-                                });
-                            }
+                                        step();
+                                    });
+                                }
 
-                            const promises = [];
+                                const promises = [];
 
-                            // 1. Web fonts
-                            if (document.fonts && document.fonts.ready) {
-                                promises.push(document.fonts.ready);
-                            }
+                                // 1. Web fonts
+                                if (document.fonts && document.fonts.ready) {
+                                    promises.push(document.fonts.ready);
+                                }
 
-                            // 2. Trigger lazy-load images by scrolling
-                            promises.push(scrollAndWaitForLazy());
+                                // 2. Trigger lazy-load images by scrolling
+                                promises.push(scrollAndWaitForLazy());
 
-                            // 3. Wait for DOM mutations to settle (1 s quiet, 5 s max)
-                            promises.push(waitForDomStable(1000, 5000));
+                                // 3. Wait for DOM mutations to settle (1 s quiet, 5 s max)
+                                promises.push(waitForDomStable(1000, 5000));
 
-                            Promise.all(promises).then(() => {
-                                // 4. After DOM is stable, wait for all <img> to finish
-                                const imgs = Array.from(document.querySelectorAll('img'));
-                                const imgPromises = imgs
-                                    .filter(img => !img.complete)
-                                    .map(img => new Promise((r) => {
-                                        img.addEventListener('load', r, {once: true});
-                                        img.addEventListener('error', r, {once: true});
-                                        // Safety: don't wait forever for a single image
-                                        setTimeout(r, 3000);
-                                    }));
-                                return Promise.all(imgPromises);
-                            }).then(() => resolve());
-                        });
-                    }""")
+                                Promise.all(promises).then(() => {
+                                    // 4. After DOM is stable, wait for all <img> to finish
+                                    const imgs = Array.from(document.querySelectorAll('img'));
+                                    const imgPromises = imgs
+                                        .filter(img => !img.complete)
+                                        .map(img => new Promise((r) => {
+                                            img.addEventListener('load', r, {once: true});
+                                            img.addEventListener('error', r, {once: true});
+                                            // Safety: don't wait forever for a single image
+                                            setTimeout(r, 3000);
+                                        }));
+                                    return Promise.all(imgPromises);
+                                }).then(() => resolve());
+                            });
+                        }""")
 
-                    await page.screenshot(
-                        path=str(file_path),
-                        full_page=True,
-                        type="png",
-                        timeout=step_timeout_ms,
-                    )
+                        await page.screenshot(
+                            path=str(file_path),
+                            full_page=True,
+                            type="png",
+                            timeout=step_timeout_ms,
+                        )
+                    finally:
+                        await page.close()
                 finally:
-                    await page.close()
+                    await context.close()
             finally:
                 await browser.close()
 

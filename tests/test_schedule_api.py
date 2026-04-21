@@ -98,7 +98,7 @@ def _override_db(site=None, schedule=None, *, site_for_schedule=True):
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
 
 # ---------------------------------------------------------------------------

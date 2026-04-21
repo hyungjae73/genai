@@ -240,7 +240,7 @@ class TestFieldSuggestionAccuracy:
         db = _make_mock_db_with_extracted_data(extracted_fields, confidence_scores)
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Call suggest-fields endpoint
         response = client.post("/api/extraction/suggest-fields/100")
@@ -362,7 +362,7 @@ class TestFieldSuggestionApprovalAddsSchema:
 
         app.dependency_overrides[get_db] = lambda: db
 
-        client = TestClient(app)
+        client = TestClient(app, headers={"X-API-Key": "dev-api-key"})
 
         # Step 1: Get field suggestions
         suggest_response = client.post("/api/extraction/suggest-fields/100")

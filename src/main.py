@@ -4,12 +4,60 @@ FastAPI application for Payment Compliance Monitor.
 This module provides REST API for managing monitoring sites, contracts, and viewing results.
 """
 
+import logging
 import os
+import secrets
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from sqlalchemy.exc import IntegrityError
+
+from src.auth.password import hash_password
+from src.database import SessionLocal
+from src.models import AuditLog, User
+
+logger = logging.getLogger(__name__)
+
+
+def _create_initial_admin():
+    """Create the initial admin user if no users exist in the database."""
+    db = SessionLocal()
+    try:
+        user_count = db.query(User).count()
+        if user_count == 0:
+            username = os.getenv("ADMIN_USERNAME", "hjkim93")
+            password = os.getenv("ADMIN_PASSWORD")
+            if not password:
+                password = secrets.token_urlsafe(16)
+                logger.warning(f"ADMIN_PASSWORD not set. Generated password: {password}")
+
+            admin = User(
+                username=username,
+                email=f"{username}@localhost",
+                hashed_password=hash_password(password),
+                role="admin",
+                must_change_password=True,
+            )
+            db.add(admin)
+            db.flush()
+
+            log = AuditLog(
+                user="system",
+                action="create",
+                resource_type="user",
+                resource_id=admin.id,
+                details={"username": username, "role": "admin", "reason": "initial_setup"},
+            )
+            db.add(log)
+            db.commit()
+            logger.info(f"Initial admin user '{username}' created.")
+    except IntegrityError:
+        db.rollback()
+        logger.info("Initial admin user already exists (created by another worker).")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -17,6 +65,7 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup
     print("Starting Payment Compliance Monitor API...")
+    _create_initial_admin()
     yield
     # Shutdown
     print("Shutting down Payment Compliance Monitor API...")
@@ -105,6 +154,8 @@ async def health_check():
 
 
 # Import and include routers
+from src.api.auth import router as auth_router
+from src.api.users import router as users_router
 from src.api.sites import router as sites_router
 from src.api.customers import router as customers_router
 from src.api.contracts import router as contracts_router
@@ -120,7 +171,12 @@ from src.api.extracted_data import router as extracted_data_router
 from src.api.extracted_data import price_history_router
 from src.api.audit_logs import router as audit_logs_router
 from src.api.schedules import router as schedules_router
+from src.api.notifications import router as notifications_router
+from src.api.dark_patterns import router as dark_patterns_router
+from src.api.reviews import router as reviews_router
 
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(users_router, prefix="/api/users", tags=["users"])
 app.include_router(customers_router, prefix="/api/customers", tags=["customers"])
 app.include_router(sites_router, prefix="/api/sites", tags=["sites"])
 app.include_router(contracts_router, prefix="/api/contracts", tags=["contracts"])
@@ -136,6 +192,9 @@ app.include_router(extracted_data_router, prefix="/api/extracted-data", tags=["e
 app.include_router(price_history_router, prefix="/api/price-history", tags=["price-history"])
 app.include_router(audit_logs_router, prefix="/api/audit-logs", tags=["audit-logs"])
 app.include_router(schedules_router, prefix="/api", tags=["schedules"])
+app.include_router(notifications_router, prefix="/api", tags=["notifications"])
+app.include_router(dark_patterns_router, prefix="/api", tags=["dark-patterns"])
+app.include_router(reviews_router, prefix="/api/reviews", tags=["reviews"])
 
 # Serve screenshot files as static assets so the frontend can load them
 # via their filesystem path (e.g. /screenshots/2024/03/42/xxx.png).

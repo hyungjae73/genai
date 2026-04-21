@@ -2,16 +2,18 @@
 API endpoints for contract condition management.
 """
 
+from typing import List, Optional
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
-from typing import List
-from datetime import datetime
 
 from src.api.schemas import (
     ContractConditionCreate,
     ContractConditionUpdate,
     ContractConditionResponse
 )
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import ContractCondition
 
@@ -19,7 +21,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=ContractConditionResponse, status_code=status.HTTP_201_CREATED)
-async def create_contract(contract: ContractConditionCreate, db: Session = Depends(get_db)):
+async def create_contract(contract: ContractConditionCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Create a new contract condition.
     
@@ -57,14 +59,14 @@ async def create_contract(contract: ContractConditionCreate, db: Session = Depen
 
 
 @router.get("/", response_model=List[ContractConditionResponse])
-async def get_all_contracts(db: Session = Depends(get_db)):
+async def get_all_contracts(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get all contract conditions."""
     contracts = db.query(ContractCondition).all()
     return contracts
 
 
 @router.get("/{contract_id}", response_model=ContractConditionResponse)
-async def get_contract(contract_id: int, db: Session = Depends(get_db)):
+async def get_contract(contract_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific contract condition."""
     contract = db.query(ContractCondition).filter(ContractCondition.id == contract_id).first()
     
@@ -78,7 +80,7 @@ async def get_contract(contract_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/site/{site_id}", response_model=List[ContractConditionResponse])
-async def get_site_contracts(site_id: int, current_only: bool = False, db: Session = Depends(get_db)):
+async def get_site_contracts(site_id: int, current_only: bool = False, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get all contract conditions for a site.
     
@@ -96,7 +98,7 @@ async def get_site_contracts(site_id: int, current_only: bool = False, db: Sessi
 
 
 @router.put("/{contract_id}", response_model=ContractConditionResponse)
-async def update_contract(contract_id: int, contract_update: ContractConditionUpdate, db: Session = Depends(get_db)):
+async def update_contract(contract_id: int, contract_update: ContractConditionUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Update a contract condition.
     
@@ -122,7 +124,7 @@ async def update_contract(contract_id: int, contract_update: ContractConditionUp
 
 
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_contract(contract_id: int, db: Session = Depends(get_db)):
+async def delete_contract(contract_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a contract condition.
     

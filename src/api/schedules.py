@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import CrawlSchedule, MonitoringSite
 
@@ -99,7 +100,7 @@ def _get_site_or_404(site_id: int, db: Session) -> MonitoringSite:
     "/sites/{site_id}/schedule",
     response_model=CrawlScheduleResponse,
 )
-async def get_schedule(site_id: int, db: Session = Depends(get_db)):
+async def get_schedule(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """Get the CrawlSchedule for a site."""
     _get_site_or_404(site_id, db)
     schedule = (
@@ -124,6 +125,7 @@ async def create_schedule(
     site_id: int,
     body: CrawlScheduleCreate,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Create a new CrawlSchedule for a site."""
     _get_site_or_404(site_id, db)
@@ -159,6 +161,7 @@ async def update_schedule(
     site_id: int,
     body: CrawlScheduleUpdate,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Update an existing CrawlSchedule."""
     _get_site_or_404(site_id, db)
@@ -192,6 +195,7 @@ async def update_site_settings(
     site_id: int,
     body: SiteSettingsUpdate,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """Update MonitoringSite pipeline settings (pre_capture_script, crawl_priority, plugin_config)."""
     site = _get_site_or_404(site_id, db)

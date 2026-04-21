@@ -28,8 +28,11 @@ class ScreenshotCapture:
     
     async def __aenter__(self):
         """Context manager entry."""
+        from src.pipeline.stealth_browser import StealthBrowserFactory
+
+        self._stealth_factory = StealthBrowserFactory()
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=True)
+        self.browser = await self._stealth_factory.create_browser(self.playwright)
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -71,10 +74,15 @@ class ScreenshotCapture:
         filename = f"site_{site_id}_{screenshot_type}_{timestamp}.{ext}"
         file_path = self.screenshot_dir / filename
         
-        # Create new page
-        page: Page = await self.browser.new_page()
+        # Create new page with stealth
+        context = await self._stealth_factory.create_context(self.browser)
+        page: Page = await context.new_page()
+        await self._stealth_factory.apply_stealth(page)
         
         try:
+            # Jitter before navigation
+            await self._stealth_factory.jitter()
+
             # Navigate to URL
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             
@@ -98,6 +106,7 @@ class ScreenshotCapture:
         
         finally:
             await page.close()
+            await context.close()
     
     async def capture_multiple_screenshots(
         self,

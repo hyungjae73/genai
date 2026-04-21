@@ -2,10 +2,12 @@
 API endpoints for monitoring history and statistics.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+import os
 from typing import List, Optional
 from datetime import datetime
 
+from fastapi import APIRouter, HTTPException, Query, Depends
+import redis.asyncio as aioredis
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -15,8 +17,10 @@ from src.api.schemas import (
     ViolationResponse,
     MonitoringStatistics
 )
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import MonitoringSite, CrawlResult, Violation, Alert
+from src.pipeline.telemetry_collector import TelemetryCollector
 
 router = APIRouter()
 
@@ -28,7 +32,8 @@ async def get_monitoring_history(
     end_date: Optional[datetime] = Query(None, description="End date for filtering"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get monitoring history with optional filtering.
@@ -62,7 +67,8 @@ async def get_violations(
     end_date: Optional[datetime] = Query(None, description="End date for filtering"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get violations with optional filtering.
@@ -91,7 +97,7 @@ async def get_violations(
 
 
 @router.get("/statistics", response_model=MonitoringStatistics)
-async def get_statistics(db: Session = Depends(get_db)):
+async def get_statistics(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get monitoring statistics.
     
@@ -136,3 +142,23 @@ async def get_statistics(db: Session = Depends(get_db)):
         fake_site_alerts=fake_site_alerts,
         unresolved_fake_site_alerts=unresolved_fake_site_alerts
     )
+
+
+@router.get("/sites/{site_id}/fetch-telemetry")
+async def get_fetch_telemetry(site_id: int, current_user = Depends(get_current_user_or_api_key)):
+    """Get fetch telemetry for a site (trailing 1-hour window).
+
+    Returns current success rate, total attempts, and block breakdown.
+    Requirements: 17.5
+    """
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        redis_client = aioredis.from_url(redis_url, decode_responses=True)
+        try:
+            collector = TelemetryCollector(redis_client)
+            result = await collector.get_success_rate(site_id, window_seconds=3600)
+            return result
+        finally:
+            await redis_client.aclose()
+    except (ConnectionError, OSError, aioredis.RedisError) as exc:
+        raise HTTPException(status_code=503, detail=f"Redis unavailable: {exc}")

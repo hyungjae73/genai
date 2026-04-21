@@ -98,7 +98,9 @@ class MonitoringSite(Base):
     etag: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_modified_header: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     plugin_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True, default=None)
-    
+    is_hard_target: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    merchant_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Relationships
     customer: Mapped["Customer"] = relationship(
         "Customer", back_populates="sites"
@@ -240,7 +242,8 @@ class Violation(Base):
     detected_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
-    
+    dark_pattern_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Relationships
     alerts: Mapped[List["Alert"]] = relationship(
         "Alert", back_populates="violation", cascade="all, delete-orphan"
@@ -683,6 +686,9 @@ class VerificationResult(Base):
     data_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     structured_data_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     evidence_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    dark_pattern_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dark_pattern_subscores: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    dark_pattern_types: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -929,3 +935,147 @@ class ScrapingTask(Base):
             f"<ScrapingTask(id={self.id}, url={self.target_url!r}, "
             f"status={self.status})>"
         )
+
+
+class NotificationRecord(Base):
+    """
+    Notification record model.
+
+    Stores notification send history for duplicate suppression and auditing.
+    Tracks Slack and email notifications sent for dark pattern violations.
+    """
+    __tablename__ = "notification_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("monitoring_sites.id"), nullable=False
+    )
+    alert_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("alerts.id"), nullable=True
+    )
+    violation_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    channel: Mapped[str] = mapped_column(String(10), nullable=False)  # 'slack' or 'email'
+    recipient: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)  # 'sent', 'failed', 'skipped'
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    # Relationships
+    site: Mapped["MonitoringSite"] = relationship("MonitoringSite")
+    alert: Mapped[Optional["Alert"]] = relationship("Alert")
+
+    # Indexes
+    __table_args__ = (
+        Index("ix_notification_records_site_violation_sent",
+              "site_id", "violation_type", "sent_at"),
+        Index("ix_notification_records_alert_id", "alert_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<NotificationRecord(id={self.id}, site_id={self.site_id}, "
+            f"channel={self.channel}, status={self.status})>"
+        )
+
+
+class ReviewItem(Base):
+    """
+    Review queue item model.
+
+    Represents an individual case in the manual review workflow.
+    Automatically populated from alerts and dark pattern detections.
+    """
+    __tablename__ = "review_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("alerts.id"), nullable=True)
+    site_id: Mapped[int] = mapped_column(Integer, ForeignKey("monitoring_sites.id"), nullable=False)
+    review_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "violation", "dark_pattern", "fake_site"
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")  # pending, in_review, approved, rejected, escalated
+    priority: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")  # critical, high, medium, low
+    assigned_to: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # User.id (no FK to avoid circular)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    alert: Mapped[Optional["Alert"]] = relationship("Alert")
+    site: Mapped["MonitoringSite"] = relationship("MonitoringSite")
+    decisions: Mapped[List["ReviewDecision"]] = relationship("ReviewDecision", back_populates="review_item", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_review_items_status", "status"),
+        Index("ix_review_items_priority", "priority"),
+        Index("ix_review_items_alert_id", "alert_id"),
+        Index("ix_review_items_site_id", "site_id"),
+        Index("ix_review_items_assigned_to", "assigned_to"),
+        Index("ix_review_items_status_priority_created", "status", "priority", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ReviewItem(id={self.id}, site_id={self.site_id}, "
+            f"review_type={self.review_type}, status={self.status}, priority={self.priority})>"
+        )
+
+
+class ReviewDecision(Base):
+    """
+    Review decision record model.
+
+    Stores the history of review decisions made by reviewers and admins.
+    """
+    __tablename__ = "review_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    review_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("review_items.id"), nullable=False)
+    reviewer_id: Mapped[int] = mapped_column(Integer, nullable=False)  # User.id (no FK to avoid circular)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)  # approved, rejected, escalated
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    review_stage: Mapped[str] = mapped_column(String(20), nullable=False)  # primary, secondary
+    decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    review_item: Mapped["ReviewItem"] = relationship("ReviewItem", back_populates="decisions")
+
+    __table_args__ = (
+        Index("ix_review_decisions_review_item_id", "review_item_id"),
+        Index("ix_review_decisions_reviewer_id", "reviewer_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ReviewDecision(id={self.id}, review_item_id={self.review_item_id}, "
+            f"decision={self.decision}, review_stage={self.review_stage})>"
+        )
+
+
+class User(Base):
+    """
+    User model for authentication and authorization.
+
+    Stores user credentials and role information for RBAC.
+    """
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_users_role", "role"),
+        Index("ix_users_is_active", "is_active"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, username={self.username}, role={self.role})>"

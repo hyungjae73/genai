@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 if TYPE_CHECKING:
     from playwright.async_api import Browser, Page, Playwright
 
+from src.pipeline.stealth_browser import StealthBrowserFactory
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,12 +56,14 @@ class BrowserPool:
         self,
         max_instances: int = 3,
         playwright_launcher: Optional[Callable] = None,
+        stealth_factory: Optional[StealthBrowserFactory] = None,
     ) -> None:
         """BrowserPool を初期化する。
 
         Args:
             max_instances: プール内の最大ブラウザインスタンス数（デフォルト: 3）
             playwright_launcher: Playwright 起動関数（テスト用にオーバーライド可能）
+            stealth_factory: StealthBrowserFactory（テスト用にオーバーライド可能）
         """
         self._max_instances = max_instances
         self._pool: asyncio.Queue = asyncio.Queue(maxsize=max_instances)
@@ -67,9 +71,10 @@ class BrowserPool:
         self._playwright: Optional[Any] = None
         self._initialized = False
         self._playwright_launcher = playwright_launcher or _default_playwright_launcher
+        self._stealth_factory = stealth_factory or StealthBrowserFactory()
 
     async def _create_browser(self) -> Any:
-        """新しいブラウザインスタンスを生成する。
+        """新しいブラウザインスタンスを生成する（StealthBrowserFactory経由）。
 
         Returns:
             Playwright Browser インスタンス
@@ -79,7 +84,7 @@ class BrowserPool:
                 "BrowserPool is not initialized. Call initialize() first."
             )
 
-        browser = await self._playwright.chromium.launch(headless=True)
+        browser = await self._stealth_factory.create_browser(self._playwright)
         return browser
 
     async def initialize(self) -> None:
@@ -122,7 +127,9 @@ class BrowserPool:
             logger.warning("Browser instance crashed, creating replacement")
             browser = await self._handle_crash(browser)
 
-        page = await browser.new_page()
+        context = await self._stealth_factory.create_context(browser)
+        page = await context.new_page()
+        await self._stealth_factory.apply_stealth(page)
         return browser, page
 
     async def release(self, browser: Any, page: Any) -> None:

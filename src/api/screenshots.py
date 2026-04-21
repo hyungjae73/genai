@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from src.api.schemas import ScreenshotResponse
+from src.auth.dependencies import get_current_user_or_api_key
 from src.database import get_db
 from src.models import CrawlResult, MonitoringSite
 from src.screenshot_capture import capture_site_screenshot
@@ -28,7 +29,8 @@ async def upload_screenshot(
     site_id: int = Form(...),
     screenshot_type: str = Form(...),  # 'baseline' or 'violation'
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Upload a screenshot for a monitoring site.
@@ -100,7 +102,8 @@ async def upload_screenshot(
 async def get_site_screenshots(
     site_id: int,
     screenshot_type: str = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get all screenshots for a specific site.
@@ -154,7 +157,7 @@ async def get_site_screenshots(
 
 
 @router.get("/view/{screenshot_id}")
-async def view_screenshot(screenshot_id: int, db: Session = Depends(get_db)):
+async def view_screenshot(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     View a screenshot file.
     
@@ -189,7 +192,7 @@ async def view_screenshot(screenshot_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{crawl_result_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_screenshot(crawl_result_id: int, db: Session = Depends(get_db)):
+async def delete_screenshot(crawl_result_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a screenshot associated with a crawl result.
 
@@ -231,7 +234,8 @@ async def capture_screenshot(
     site_id: int,
     screenshot_type: str,  # 'baseline' or 'violation'
     file_format: str = "png",  # 'png' or 'pdf'
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Capture a screenshot by crawling the site URL.

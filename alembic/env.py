@@ -16,6 +16,8 @@ load_dotenv()
 
 # Import models for autogenerate support
 from src.models import Base
+# Import additional models that extend Base (for autogenerate discovery)
+import src.rules.models  # noqa: F401 — DynamicComplianceRuleModel, ContentFingerprintModel
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

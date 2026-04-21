@@ -29,3 +29,54 @@
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
+
+/* Help content inside modal */
+.help-content {
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--color-text-primary);
+}
+
+.help-content h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 1rem 0 0.4rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.help-content h3:first-child {
+  margin-top: 0;
+}
+
+.help-content p {
+  margin: 0 0 0.5rem;
+  color: var(--color-text-secondary);
+}
+
+.help-content ul {
+  margin: 0 0 0.5rem;
+  padding-left: 1.2rem;
+}
+
+.help-content li {
+  margin-bottom: 0.3rem;
+  color: var(--color-text-secondary);
+}
+
+.help-content .help-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  margin: 0.5rem 0;
+  background: var(--color-accent-subtle, rgba(37, 99, 235, 0.05));
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.help-content .help-tip::before {
+  content: '💡';
+  flex-shrink: 0;
+}

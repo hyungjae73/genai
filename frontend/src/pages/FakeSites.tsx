@@ -89,32 +89,23 @@ const FakeSites = () => {
   return (
     <div className="fake-sites">
       <div className="page-header">
-        <h1>偽サイト検知 <HelpButton title="偽サイト検知の使い方">
+        <h1>偽サイト検知 <HelpButton title="このページの使い方">
           <div className="help-content">
-            <h3>ユーザーストーリー</h3>
-            <p>偽サイトの検知状況を一覧で確認し、対応状況を追跡したい</p>
-
-            <h3>偽ドメイン・正規ドメイン・類似度スコアの見方</h3>
+            <h3>できること</h3>
             <ul>
-              <li><strong>偽ドメイン</strong>: 検知された偽サイトのドメイン名です</li>
-              <li><strong>正規ドメイン</strong>: 偽サイトが模倣している正規サイトのドメイン名です</li>
-              <li><strong>類似度スコア</strong>: 0〜1の数値で、1に近いほど類似度が高いことを示します</li>
+              <li>検知された偽サイトの一覧確認</li>
+              <li>偽ドメインと正規ドメインの類似度を比較</li>
+              <li>対応状況（未解決/解決済み）の追跡</li>
             </ul>
 
-            <h3>ドメイン類似度とコンテンツ類似度の違い</h3>
+            <h3>スコアの見方</h3>
             <ul>
-              <li><strong>ドメイン類似度</strong>: ドメイン名の文字列がどれだけ似ているかを示します</li>
-              <li><strong>コンテンツ類似度</strong>: ページの内容がどれだけ似ているかを示します</li>
+              <li><strong>ドメイン類似度</strong> — ドメイン名の文字列の類似度（0〜1）</li>
+              <li><strong>コンテンツ類似度</strong> — ページ内容の類似度（0〜1）</li>
             </ul>
+            <p>1に近いほど類似度が高く、偽サイトの可能性が高いことを示します。</p>
 
-            <h3>ステータス</h3>
-            <ul>
-              <li><strong>未解決</strong>: まだ対応が完了していないアラートです</li>
-              <li><strong>解決済み</strong>: 対応が完了したアラートです</li>
-            </ul>
-
-            <h3>データの自動更新</h3>
-            <p>データは30秒ごとに自動更新されます。手動でのリロードは不要です。</p>
+            <div className="help-tip">データは30秒ごとに自動更新されます。</div>
           </div>
         </HelpButton></h1>
       </div>

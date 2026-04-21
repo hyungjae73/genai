@@ -137,6 +137,16 @@ const SiteRow = ({ site, customerName, isExpanded, onToggle, onCrawlComplete }: 
     return labels[status] || status;
   };
 
+  const getComplianceStatusDescription = (status: string) => {
+    const descriptions: Record<string, string> = {
+      compliant: '契約条件に準拠しています',
+      violation: '契約条件の違反が検出されました',
+      pending: 'クロール未実行または検証待ちです',
+      error: 'クロールまたは検証でエラーが発生しました',
+    };
+    return descriptions[status] || '';
+  };
+
   const handleShowResults = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowResultModal(true);
@@ -162,7 +172,7 @@ const SiteRow = ({ site, customerName, isExpanded, onToggle, onCrawlComplete }: 
         <span className="site-category">
           {site.category_id ? `カテゴリ ${site.category_id}` : '未分類'}
         </span>
-        <Badge variant={complianceToBadgeVariant(site.compliance_status)} size="sm">
+        <Badge variant={complianceToBadgeVariant(site.compliance_status)} size="sm" title={getComplianceStatusDescription(site.compliance_status)}>
           {getComplianceStatusLabel(site.compliance_status)}
         </Badge>
         <span className="last-crawl">
