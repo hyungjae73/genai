@@ -1,0 +1,103 @@
+.dynamic-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.dynamic-field__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.dynamic-field__required {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.dynamic-field__input {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dynamic-field__input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.dynamic-field__input--error {
+  border-color: #ef4444;
+}
+
+.dynamic-field__error {
+  font-size: 0.75rem;
+  color: #ef4444;
+}
+
+.dynamic-field__currency {
+  display: flex;
+  gap: 8px;
+}
+
+.dynamic-field__currency-amount {
+  flex: 2;
+}
+
+.dynamic-field__currency-code {
+  flex: 1;
+}
+
+.dynamic-field__percentage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dynamic-field__percentage-symbol {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.dynamic-field__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dynamic-field__checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.dynamic-field__textarea {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 72px;
+}
+
+.dynamic-field__textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.dynamic-field__textarea--error {
+  border-color: #ef4444;
+}
+
+.dynamic-field__hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}

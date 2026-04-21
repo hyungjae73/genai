@@ -1,0 +1,41 @@
+.categories {
+  padding: 24px;
+}
+
+.categories .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.categories .page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #111827);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.categories-schema-section {
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  padding-top: 32px;
+  margin-top: 32px;
+}
+
+.categories-schema-header {
+  margin-bottom: 16px;
+}
+
+.categories-schema-header h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #111827);
+}
+
+.categories-schema-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6b7280);
+  margin-top: 4px;
+}

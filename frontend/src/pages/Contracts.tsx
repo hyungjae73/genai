@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
-import { getSites, getContracts, getSiteContracts, createContract, deleteContract, type Site, type ContractCondition, type ContractConditionCreate } from '../services/api';
+import { getSites, getContracts, getSiteContracts, createContract, deleteContract, getCategories, getFieldSchemas, type Site, type ContractCondition, type ContractConditionCreate, type Category, type FieldSchema } from '../services/api';
 import { Select } from '../components/ui/Select/Select';
 import { Card } from '../components/ui/Card/Card';
 import { Modal } from '../components/ui/Modal/Modal';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Button } from '../components/ui/Button/Button';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
+import DynamicFieldInput from '../components/contract/DynamicFieldInput';
+import { validateDynamicField } from '../components/contract/validateDynamicField';
 import './Contracts.css';
 
 const Contracts = () => {
   const [sites, setSites] = useState<Site[]>([]);
   const [contracts, setContracts] = useState<ContractCondition[]>([]);
   const [selectedSite, setSelectedSite] = useState<number | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,6 +22,12 @@ const Contracts = () => {
   const [showModal, setShowModal] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Dynamic form state (tasks 6.1–6.3)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [fieldSchemas, setFieldSchemas] = useState<FieldSchema[]>([]);
+  const [dynamicFields, setDynamicFields] = useState<Record<string, unknown>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Form state
   const [formData, setFormData] = useState<ContractConditionCreate>({
@@ -46,12 +55,14 @@ const Contracts = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [sitesData, contractsData] = await Promise.all([
+      const [sitesData, contractsData, categoriesData] = await Promise.all([
         getSites(),
         getContracts(),
+        getCategories(),
       ]);
       setSites(sitesData);
       setContracts(contractsData);
+      setCategories(categoriesData);
       setError(null);
     } catch (err) {
       setError('データの取得に失敗しました');
@@ -70,6 +81,46 @@ const Contracts = () => {
     }
   };
 
+  // Task 6.2: handle category change — fetch schemas, clear dynamic state
+  const handleCategoryChange = async (categoryId: number | null) => {
+    setSelectedCategoryId(categoryId);
+    setDynamicFields({});
+    setFieldErrors({});
+    if (categoryId) {
+      try {
+        const schemas = await getFieldSchemas(categoryId);
+        setFieldSchemas(schemas.sort((a, b) => a.display_order - b.display_order));
+      } catch (err) {
+        console.error('Failed to fetch field schemas:', err);
+        setFieldSchemas([]);
+      }
+    } else {
+      setFieldSchemas([]);
+    }
+  };
+
+  // Task 6.3: handle dynamic field change with validation
+  const handleDynamicFieldChange = (fieldName: string, value: unknown) => {
+    const updated = { ...dynamicFields, [fieldName]: value };
+    setDynamicFields(updated);
+
+    const schema = fieldSchemas.find(s => s.field_name === fieldName);
+    if (schema) {
+      const err = validateDynamicField(schema, value);
+      setFieldErrors(prev => {
+        const next = { ...prev };
+        if (err) {
+          next[fieldName] = err;
+        } else {
+          delete next[fieldName];
+        }
+        return next;
+      });
+    }
+  };
+
+  const hasDynamicFieldErrors = Object.keys(fieldErrors).some(k => fieldErrors[k]);
+
   const openCreateModal = (siteId?: number) => {
     setFormData({
       site_id: siteId || 0,
@@ -82,8 +133,29 @@ const Contracts = () => {
         has_cancellation_policy: false,
       },
     });
+    setSelectedCategoryId(null);
+    setFieldSchemas([]);
+    setDynamicFields({});
+    setFieldErrors({});
     setFormError(null);
     setShowModal(true);
+  };
+
+  // Task 6.5: open edit modal with pre-filled dynamic fields
+  const openEditModal = (contract: ContractCondition) => {
+    setFormData({
+      site_id: contract.site_id,
+      prices: contract.prices,
+      payment_methods: contract.payment_methods,
+      fees: contract.fees,
+      subscription_terms: contract.subscription_terms,
+    });
+    setDynamicFields(contract.dynamic_fields ?? {});
+    setFieldErrors({});
+    setFormError(null);
+    setShowModal(true);
+    // Load schemas for the contract's category
+    handleCategoryChange(contract.category_id ?? null);
   };
 
   const closeModal = () => {
@@ -103,7 +175,14 @@ const Contracts = () => {
         return;
       }
 
-      await createContract(formData);
+      // Task 6.4: include dynamic_fields and category_id in payload
+      const payload: ContractConditionCreate = {
+        ...formData,
+        dynamic_fields: dynamicFields,
+        category_id: selectedCategoryId ?? undefined,
+      };
+
+      await createContract(payload);
       await fetchData();
       if (selectedSite) {
         await fetchSiteContracts(selectedSite);
@@ -185,7 +264,7 @@ const Contracts = () => {
         variant="primary"
         size="md"
         type="submit"
-        disabled={submitting}
+        disabled={submitting || hasDynamicFieldErrors}
         loading={submitting}
         onClick={() => {
           const form = document.getElementById('contract-form') as HTMLFormElement;
@@ -200,27 +279,24 @@ const Contracts = () => {
   return (
     <div className="contracts">
       <div className="page-header">
-        <h1>契約条件管理 <HelpButton title="契約条件管理の使い方">
+        <h1>契約条件管理 <HelpButton title="このページの使い方">
           <div className="help-content">
-            <h3>ユーザーストーリー</h3>
-            <p>サイトごとの契約条件を登録・管理し、監視の基準を設定したい</p>
-
-            <h3>サイトフィルター</h3>
-            <p>サイトフィルターで特定サイトの契約を絞り込むことができます。「すべてのサイト」を選択するとすべての契約が表示されます。</p>
-
-            <h3>契約条件の設定</h3>
+            <h3>できること</h3>
             <ul>
-              <li><strong>価格</strong>: 通貨ごとの価格を設定します</li>
-              <li><strong>決済方法</strong>: 許可する決済方法と必須の決済方法を設定します</li>
-              <li><strong>手数料</strong>: パーセンテージ手数料と固定手数料を設定します</li>
-              <li><strong>サブスクリプション条件</strong>: 契約期間の縛りや解約ポリシーを設定します</li>
+              <li>サイトごとの契約条件（価格・決済方法・手数料・サブスク条件）を登録</li>
+              <li>サイトフィルターで特定サイトの契約を絞り込み</li>
+              <li>契約のバージョン履歴を確認</li>
             </ul>
 
-            <h3>バージョン管理</h3>
-            <p>契約条件はバージョン管理されており、変更の履歴を追跡できます。各契約にはバージョン番号が付与されます。</p>
+            <h3>設定項目</h3>
+            <ul>
+              <li><strong>価格</strong> — 通貨ごとの基準価格</li>
+              <li><strong>決済方法</strong> — 許可/必須の決済方法</li>
+              <li><strong>手数料</strong> — パーセンテージ・固定手数料</li>
+              <li><strong>サブスク条件</strong> — 契約期間・解約ポリシー</li>
+            </ul>
 
-            <h3>「現在」バッジ</h3>
-            <p>「現在」バッジが付いた契約が、そのサイトの監視基準として使用されます。監視システムはこの契約条件に基づいて違反を検出します。</p>
+            <div className="help-tip">「現在」バッジの契約が監視基準です。違反検出はこの条件に基づいて行われます。</div>
           </div>
         </HelpButton></h1>
         <Button variant="primary" size="md" onClick={() => openCreateModal()}>
@@ -262,6 +338,14 @@ const Contracts = () => {
                   </div>
                 </div>
                 <div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditModal(contract)}
+                    aria-label="編集"
+                  >
+                    編集
+                  </Button>
                   <Button
                     variant="danger"
                     size="sm"
@@ -337,6 +421,19 @@ const Contracts = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Task 6.6: display dynamic_fields in contract cards */}
+                {contract.dynamic_fields && Object.keys(contract.dynamic_fields).length > 0 && (
+                  <div className="detail-section">
+                    <h4>追加フィールド</h4>
+                    {Object.entries(contract.dynamic_fields).map(([key, val]) => (
+                      <div key={key} className="contract-dynamic-field">
+                        <span className="contract-dynamic-field__label">{key}:</span>
+                        <span className="contract-dynamic-field__value">{String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="contract-footer">
@@ -371,6 +468,20 @@ const Contracts = () => {
               aria-label="契約対象サイト"
               filterable
               placeholder="サイト名で絞り込み..."
+            />
+          </div>
+
+          {/* Task 6.1: category select */}
+          <div className="contract-form-group">
+            <Select
+              label="カテゴリ"
+              value={selectedCategoryId ? String(selectedCategoryId) : ''}
+              onChange={(val) => handleCategoryChange(val ? Number(val) : null)}
+              options={[
+                { value: '', label: 'カテゴリを選択（任意）' },
+                ...categories.map(cat => ({ value: String(cat.id), label: cat.name })),
+              ]}
+              aria-label="カテゴリ選択"
             />
           </div>
 
@@ -510,6 +621,23 @@ const Contracts = () => {
               </label>
             </div>
           </div>
+
+          {/* Task 6.2: render dynamic fields in display_order */}
+          {fieldSchemas.length > 0 && (
+            <div className="contract-form-section">
+              <h3>追加フィールド</h3>
+              {fieldSchemas.map(schema => (
+                <div key={schema.id} className="contract-form-group">
+                  <DynamicFieldInput
+                    schema={schema}
+                    value={dynamicFields[schema.field_name]}
+                    onChange={handleDynamicFieldChange}
+                    error={fieldErrors[schema.field_name]}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
           {formError && (
             <div className="contract-form-error">{formError}</div>
