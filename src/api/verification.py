@@ -7,9 +7,10 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database import get_db
+from src.database import get_async_db
 from src.auth.dependencies import get_current_user_or_api_key
 from src.models import MonitoringSite, VerificationResult
 from src.verification_service import VerificationService
@@ -89,7 +90,7 @@ class VerificationStatusResponse(BaseModel):
 _running_verifications = {}
 
 
-async def _run_verification_task(site_id: int, db: Session):
+async def _run_verification_task(site_id: int, db: AsyncSession):
     """Background task to run verification."""
     try:
         # Create service instances
@@ -125,7 +126,7 @@ async def _run_verification_task(site_id: int, db: Session):
                     created_at=datetime.utcnow(),
                 )
                 db.add(error_record)
-                db.commit()
+                await db.commit()
 
     except Exception as e:
         # Save error to DB so the status endpoint can report it
@@ -144,7 +145,7 @@ async def _run_verification_task(site_id: int, db: Session):
                 created_at=datetime.utcnow(),
             )
             db.add(error_record)
-            db.commit()
+            await db.commit()
         except Exception:
             pass  # DB write failed too — nothing more we can do
     finally:
@@ -157,23 +158,17 @@ async def _run_verification_task(site_id: int, db: Session):
 async def trigger_verification(
     request: VerificationTriggerRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Trigger verification for a site.
-    
-    Returns:
-        {
-            "job_id": "verification_result_id",
-            "status": "processing",
-            "message": "Verification started"
-        }
     """
     site_id = request.site_id
     
     # Check if site exists
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -208,41 +203,41 @@ async def get_verification_results(
     site_id: int,
     limit: int = 1,
     offset: int = 0,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get verification results for a site.
-    
-    Returns:
-        {
-            "results": [VerificationResult],
-            "total": int,
-            "limit": int,
-            "offset": int
-        }
     """
     # Check if site exists
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Site with id {site_id} not found"
         )
     
+    # Count total
+    count_result = await db.execute(
+        select(func.count(VerificationResult.id)).where(VerificationResult.site_id == site_id)
+    )
+    total = count_result.scalar() or 0
+    
     # Query verification results
-    query = db.query(VerificationResult).filter(
-        VerificationResult.site_id == site_id
-    ).order_by(VerificationResult.created_at.desc())
-    
-    total = query.count()
-    
-    results = query.offset(offset).limit(limit).all()
+    result = await db.execute(
+        select(VerificationResult)
+        .where(VerificationResult.site_id == site_id)
+        .order_by(VerificationResult.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    results = result.scalars().all()
     
     # Format results
     formatted_results = []
-    for result in results:
-        formatted_results.append(_format_verification_result(result, site.name))
+    for vr in results:
+        formatted_results.append(_format_verification_result(vr, site.name))
     
     return {
         'results': formatted_results,
@@ -255,18 +250,11 @@ async def get_verification_results(
 @router.get("/status/{job_id}")
 async def get_verification_status(
     job_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get status of a verification job.
-    
-    Returns:
-        {
-            "job_id": int,
-            "status": "processing" | "completed" | "failed",
-            "result": VerificationResult | null
-        }
     """
     # job_id is site_id in our implementation
     site_id = job_id
@@ -280,11 +268,15 @@ async def get_verification_status(
         }
     
     # Check for completed result
-    result = db.query(VerificationResult).filter(
-        VerificationResult.site_id == site_id
-    ).order_by(VerificationResult.created_at.desc()).first()
+    result = await db.execute(
+        select(VerificationResult)
+        .where(VerificationResult.site_id == site_id)
+        .order_by(VerificationResult.created_at.desc())
+        .limit(1)
+    )
+    vr = result.scalar_one_or_none()
     
-    if not result:
+    if not vr:
         return {
             'job_id': job_id,
             'status': 'processing',
@@ -292,12 +284,13 @@ async def get_verification_status(
         }
     
     # Get site name
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    site_result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = site_result.scalar_one_or_none()
     
     return {
         'job_id': job_id,
-        'status': 'completed' if result.status == 'success' else 'failed',
-        'result': _format_verification_result(result, site.name if site else 'Unknown'),
+        'status': 'completed' if vr.status == 'success' else 'failed',
+        'result': _format_verification_result(vr, site.name if site else 'Unknown'),
     }
 
 
@@ -306,14 +299,6 @@ def _format_verification_result(result: VerificationResult, site_name: str) -> d
 
     Handles NULL new pipeline fields gracefully so that legacy clients
     receive a structurally compatible response (Req 22.5, 22.6).
-
-    Args:
-        result: VerificationResult model instance.
-        site_name: Name of the monitoring site.
-
-    Returns:
-        Dict with all fields, new pipeline fields defaulting to safe values
-        when NULL.
     """
     response = {
         'id': result.id,

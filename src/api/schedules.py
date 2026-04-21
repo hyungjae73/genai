@@ -11,10 +11,11 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import CrawlSchedule, MonitoringSite
 
 router = APIRouter()
@@ -82,8 +83,9 @@ class SiteSettingsUpdate(BaseModel):
 # Helper
 # ---------------------------------------------------------------------------
 
-def _get_site_or_404(site_id: int, db: Session) -> MonitoringSite:
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+async def _get_site_or_404(site_id: int, db: AsyncSession) -> MonitoringSite:
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -100,14 +102,13 @@ def _get_site_or_404(site_id: int, db: Session) -> MonitoringSite:
     "/sites/{site_id}/schedule",
     response_model=CrawlScheduleResponse,
 )
-async def get_schedule(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_schedule(site_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Get the CrawlSchedule for a site."""
-    _get_site_or_404(site_id, db)
-    schedule = (
-        db.query(CrawlSchedule)
-        .filter(CrawlSchedule.site_id == site_id)
-        .first()
+    await _get_site_or_404(site_id, db)
+    result = await db.execute(
+        select(CrawlSchedule).where(CrawlSchedule.site_id == site_id)
     )
+    schedule = result.scalar_one_or_none()
     if not schedule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,17 +125,16 @@ async def get_schedule(site_id: int, db: Session = Depends(get_db), current_user
 async def create_schedule(
     site_id: int,
     body: CrawlScheduleCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """Create a new CrawlSchedule for a site."""
-    _get_site_or_404(site_id, db)
+    await _get_site_or_404(site_id, db)
 
-    existing = (
-        db.query(CrawlSchedule)
-        .filter(CrawlSchedule.site_id == site_id)
-        .first()
+    result = await db.execute(
+        select(CrawlSchedule).where(CrawlSchedule.site_id == site_id)
     )
+    existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -148,8 +148,8 @@ async def create_schedule(
         next_crawl_at=datetime.utcnow() + timedelta(minutes=body.interval_minutes),
     )
     db.add(schedule)
-    db.commit()
-    db.refresh(schedule)
+    await db.commit()
+    await db.refresh(schedule)
     return schedule
 
 
@@ -160,17 +160,16 @@ async def create_schedule(
 async def update_schedule(
     site_id: int,
     body: CrawlScheduleUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """Update an existing CrawlSchedule."""
-    _get_site_or_404(site_id, db)
+    await _get_site_or_404(site_id, db)
 
-    schedule = (
-        db.query(CrawlSchedule)
-        .filter(CrawlSchedule.site_id == site_id)
-        .first()
+    result = await db.execute(
+        select(CrawlSchedule).where(CrawlSchedule.site_id == site_id)
     )
+    schedule = result.scalar_one_or_none()
     if not schedule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -181,8 +180,8 @@ async def update_schedule(
     for field, value in update_data.items():
         setattr(schedule, field, value)
 
-    db.commit()
-    db.refresh(schedule)
+    await db.commit()
+    await db.refresh(schedule)
     return schedule
 
 
@@ -194,11 +193,11 @@ async def update_schedule(
 async def update_site_settings(
     site_id: int,
     body: SiteSettingsUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """Update MonitoringSite pipeline settings (pre_capture_script, crawl_priority, plugin_config)."""
-    site = _get_site_or_404(site_id, db)
+    site = await _get_site_or_404(site_id, db)
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -245,8 +244,8 @@ async def update_site_settings(
     for field, value in update_data.items():
         setattr(site, field, value)
 
-    db.commit()
-    db.refresh(site)
+    await db.commit()
+    await db.refresh(site)
 
     return {
         "id": site.id,

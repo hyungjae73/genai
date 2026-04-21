@@ -23,13 +23,10 @@ import src.rules.models  # noqa: F401 — DynamicComplianceRuleModel, ContentFin
 # access to the values within the .ini file in use.
 config = context.config
 
-# Set the database URL from environment variable
-database_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://payment_monitor:payment_monitor_pass@localhost:5432/payment_monitor"
-)
-# Alembic uses psycopg2, not asyncpg, so we need to convert the URL
-database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+# Derive a psycopg2 URL from DATABASE_URL — Alembic must NEVER use asyncpg.
+from src.database import derive_sync_url, DATABASE_URL
+
+database_url = derive_sync_url(DATABASE_URL)
 config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.

@@ -6,7 +6,8 @@ import json
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     MonitoringSiteCreate,
@@ -14,14 +15,14 @@ from src.api.schemas import (
     MonitoringSiteResponse
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import MonitoringSite
 
 router = APIRouter()
 
 
 @router.post("/", response_model=MonitoringSiteResponse, status_code=status.HTTP_201_CREATED)
-async def create_site(site: MonitoringSiteCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def create_site(site: MonitoringSiteCreate, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Create a new monitoring site."""
     db_site = MonitoringSite(
         customer_id=site.customer_id,
@@ -31,23 +32,25 @@ async def create_site(site: MonitoringSiteCreate, db: Session = Depends(get_db),
     )
     
     db.add(db_site)
-    db.commit()
-    db.refresh(db_site)
+    await db.commit()
+    await db.refresh(db_site)
     
     return db_site
 
 
 @router.get("/", response_model=List[MonitoringSiteResponse])
-async def list_sites(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def list_sites(db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Get list of all monitoring sites."""
-    sites = db.query(MonitoringSite).all()
+    result = await db.execute(select(MonitoringSite))
+    sites = result.scalars().all()
     return sites
 
 
 @router.get("/{site_id}", response_model=MonitoringSiteResponse)
-async def get_site(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_site(site_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific monitoring site."""
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     
     if not site:
         raise HTTPException(
@@ -59,9 +62,10 @@ async def get_site(site_id: int, db: Session = Depends(get_db), current_user = D
 
 
 @router.put("/{site_id}", response_model=MonitoringSiteResponse)
-async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Update a monitoring site."""
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     
     if not site:
         raise HTTPException(
@@ -125,16 +129,17 @@ async def update_site(site_id: int, site_update: MonitoringSiteUpdate, db: Sessi
     for field, value in update_data.items():
         setattr(site, field, value)
     
-    db.commit()
-    db.refresh(site)
+    await db.commit()
+    await db.refresh(site)
     
     return site
 
 
 @router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_site(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def delete_site(site_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Delete a monitoring site."""
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     
     if not site:
         raise HTTPException(
@@ -142,6 +147,6 @@ async def delete_site(site_id: int, db: Session = Depends(get_db), current_user 
             detail=f"Site with id {site_id} not found"
         )
     
-    db.delete(site)
-    db.commit()
+    await db.delete(site)
+    await db.commit()
     return None

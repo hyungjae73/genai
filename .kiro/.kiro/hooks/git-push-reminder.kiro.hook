@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "セッション終了時 Git プッシュリマインダー",
+  "description": "セッション終了時に genai/ リポジトリの未コミット変更と未プッシュコミットを確認し、プッシュを促します。",
+  "version": "1",
+  "when": {
+    "type": "agentStop"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "セッション終了前の Git チェック結果を確認してください。未プッシュのコミットがある場合は、ユーザーに `cd genai && git push origin main` の実行を案内してください。未コミットの変更がある場合は、機能別にまとめてコミットすることを提案してください（例: `git add -A && git commit -m \"feat: {spec名} - {概要}\"`）。変更がない場合は何も言わないでください。"
+  }
+}

@@ -7,7 +7,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from redis.asyncio import Redis
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_current_user, get_redis
 from src.auth.jwt import create_access_token, create_refresh_token, decode_refresh_token
@@ -20,7 +21,7 @@ from src.auth.session import (
     store_refresh_token,
     validate_refresh_token,
 )
-from src.database import get_db
+from src.database import get_async_db
 from src.models import AuditLog, User
 
 router = APIRouter()
@@ -64,7 +65,7 @@ async def login(
     body: LoginRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     redis: Redis = Depends(get_redis),
 ):
     """Authenticate user and issue tokens."""
@@ -77,29 +78,28 @@ async def login(
             headers={"Retry-After": str(retry_after)},
         )
 
-    user = (
-        db.query(User).filter(User.username == body.username).first()
-    )  # type: Optional[User]
+    result = await db.execute(select(User).where(User.username == body.username))
+    user: Optional[User] = result.scalar_one_or_none()
 
     if user is None:
         # Timing-attack mitigation: run a dummy verify so the response
         # time is indistinguishable from a real password check.
         verify_password(body.password, _DUMMY_HASH)
-        _record_auth_event(db, body.username, "login_failure", request)
+        await _record_auth_event(db, body.username, "login_failure", request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="認証情報が無効です",
         )
 
     if not verify_password(body.password, user.hashed_password):
-        _record_auth_event(db, body.username, "login_failure", request)
+        await _record_auth_event(db, body.username, "login_failure", request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="認証情報が無効です",
         )
 
     if not user.is_active:
-        _record_auth_event(db, body.username, "login_failure", request)
+        await _record_auth_event(db, body.username, "login_failure", request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="認証情報が無効です",
@@ -118,7 +118,7 @@ async def login(
     _set_refresh_cookie(response, refresh_token)
 
     # Audit log
-    _record_auth_event(db, body.username, "login_success", request)
+    await _record_auth_event(db, body.username, "login_success", request)
 
     return TokenResponse(access_token=access_token)
 
@@ -127,7 +127,7 @@ async def login(
 async def refresh(
     response: Response,
     refresh_token: Optional[str] = Cookie(default=None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     redis: Redis = Depends(get_redis),
 ):
     """Rotate tokens using the refresh_token cookie."""
@@ -160,7 +160,8 @@ async def refresh(
     await revoke_refresh_token(user_id, jti, redis)
 
     # Look up user for new access token claims
-    user = db.query(User).filter(User.id == user_id).first()  # type: Optional[User]
+    result = await db.execute(select(User).where(User.id == user_id))
+    user: Optional[User] = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -197,7 +198,7 @@ async def logout(
 
 
 @router.get("/me", response_model=MeResponse)
-def me(current_user: User = Depends(get_current_user)):
+async def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's info."""
     return MeResponse(
         id=current_user.id,
@@ -211,7 +212,7 @@ def me(current_user: User = Depends(get_current_user)):
 async def change_password(
     body: ChangePasswordRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     redis: Redis = Depends(get_redis),
 ):
@@ -234,13 +235,13 @@ async def change_password(
     # Update password
     current_user.hashed_password = hash_password(body.new_password)
     current_user.must_change_password = False
-    db.flush()
+    await db.flush()
 
     # Revoke all sessions (force re-login with new password)
     await revoke_all_user_tokens(current_user.id, redis)
 
     # Audit log
-    _record_auth_event(db, current_user.username, "password_changed", request)
+    await _record_auth_event(db, current_user.username, "password_changed", request)
 
     return None
 
@@ -249,8 +250,8 @@ async def change_password(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _record_auth_event(
-    db: Session,
+async def _record_auth_event(
+    db: AsyncSession,
     username: str,
     action: str,
     request: Optional[Request] = None,
@@ -267,6 +268,4 @@ def _record_auth_event(
     )
     db.add(log)
     # Flush so the log is persisted even if the caller raises an HTTPException
-    # (get_db commits on success, rolls back on unhandled exceptions, but
-    # HTTPException is handled by FastAPI *after* the generator yields).
-    db.flush()
+    await db.flush()

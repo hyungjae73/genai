@@ -6,7 +6,8 @@ from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     ContractConditionCreate,
@@ -14,14 +15,14 @@ from src.api.schemas import (
     ContractConditionResponse
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import ContractCondition
 
 router = APIRouter()
 
 
 @router.post("/", response_model=ContractConditionResponse, status_code=status.HTTP_201_CREATED)
-async def create_contract(contract: ContractConditionCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def create_contract(contract: ContractConditionCreate, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Create a new contract condition.
     
@@ -29,15 +30,23 @@ async def create_contract(contract: ContractConditionCreate, db: Session = Depen
     Previous versions are marked as not current.
     """
     # Mark existing contracts for this site as not current
-    db.query(ContractCondition).filter(
-        ContractCondition.site_id == contract.site_id,
-        ContractCondition.is_current == True
-    ).update({"is_current": False})
+    result = await db.execute(
+        select(ContractCondition).where(
+            ContractCondition.site_id == contract.site_id,
+            ContractCondition.is_current == True
+        )
+    )
+    existing_contracts = result.scalars().all()
+    for c in existing_contracts:
+        c.is_current = False
     
     # Determine version number
-    max_version = db.query(ContractCondition).filter(
-        ContractCondition.site_id == contract.site_id
-    ).count()
+    count_result = await db.execute(
+        select(func.count(ContractCondition.id)).where(
+            ContractCondition.site_id == contract.site_id
+        )
+    )
+    max_version = count_result.scalar()
     version = max_version + 1
     
     # Create new contract
@@ -52,23 +61,27 @@ async def create_contract(contract: ContractConditionCreate, db: Session = Depen
     )
     
     db.add(db_contract)
-    db.commit()
-    db.refresh(db_contract)
+    await db.commit()
+    await db.refresh(db_contract)
     
     return db_contract
 
 
 @router.get("/", response_model=List[ContractConditionResponse])
-async def get_all_contracts(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_all_contracts(db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Get all contract conditions."""
-    contracts = db.query(ContractCondition).all()
+    result = await db.execute(select(ContractCondition))
+    contracts = result.scalars().all()
     return contracts
 
 
 @router.get("/{contract_id}", response_model=ContractConditionResponse)
-async def get_contract(contract_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_contract(contract_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific contract condition."""
-    contract = db.query(ContractCondition).filter(ContractCondition.id == contract_id).first()
+    result = await db.execute(
+        select(ContractCondition).where(ContractCondition.id == contract_id)
+    )
+    contract = result.scalar_one_or_none()
     
     if not contract:
         raise HTTPException(
@@ -80,7 +93,7 @@ async def get_contract(contract_id: int, db: Session = Depends(get_db), current_
 
 
 @router.get("/site/{site_id}", response_model=List[ContractConditionResponse])
-async def get_site_contracts(site_id: int, current_only: bool = False, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_site_contracts(site_id: int, current_only: bool = False, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get all contract conditions for a site.
     
@@ -88,24 +101,29 @@ async def get_site_contracts(site_id: int, current_only: bool = False, db: Sessi
         site_id: Site ID
         current_only: If True, return only current contract
     """
-    query = db.query(ContractCondition).filter(ContractCondition.site_id == site_id)
+    stmt = select(ContractCondition).where(ContractCondition.site_id == site_id)
     
     if current_only:
-        query = query.filter(ContractCondition.is_current == True)
+        stmt = stmt.where(ContractCondition.is_current == True)
     
-    contracts = query.order_by(ContractCondition.version.desc()).all()
+    stmt = stmt.order_by(ContractCondition.version.desc())
+    result = await db.execute(stmt)
+    contracts = result.scalars().all()
     return contracts
 
 
 @router.put("/{contract_id}", response_model=ContractConditionResponse)
-async def update_contract(contract_id: int, contract_update: ContractConditionUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def update_contract(contract_id: int, contract_update: ContractConditionUpdate, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Update a contract condition.
     
     Note: This updates the existing contract. To create a new version,
     use POST endpoint instead.
     """
-    contract = db.query(ContractCondition).filter(ContractCondition.id == contract_id).first()
+    result = await db.execute(
+        select(ContractCondition).where(ContractCondition.id == contract_id)
+    )
+    contract = result.scalar_one_or_none()
     
     if not contract:
         raise HTTPException(
@@ -117,21 +135,24 @@ async def update_contract(contract_id: int, contract_update: ContractConditionUp
     for field, value in update_data.items():
         setattr(contract, field, value)
     
-    db.commit()
-    db.refresh(contract)
+    await db.commit()
+    await db.refresh(contract)
     
     return contract
 
 
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_contract(contract_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def delete_contract(contract_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a contract condition.
     
     Note: This is a soft delete. The contract is marked as not current
     but not removed from the database.
     """
-    contract = db.query(ContractCondition).filter(ContractCondition.id == contract_id).first()
+    result = await db.execute(
+        select(ContractCondition).where(ContractCondition.id == contract_id)
+    )
+    contract = result.scalar_one_or_none()
     
     if not contract:
         raise HTTPException(
@@ -140,6 +161,6 @@ async def delete_contract(contract_id: int, db: Session = Depends(get_db), curre
         )
     
     contract.is_current = False
-    db.commit()
+    await db.commit()
     
     return None

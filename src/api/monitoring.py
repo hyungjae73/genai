@@ -8,8 +8,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 import redis.asyncio as aioredis
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     MonitoringHistoryFilter,
@@ -18,7 +18,7 @@ from src.api.schemas import (
     MonitoringStatistics
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import MonitoringSite, CrawlResult, Violation, Alert
 from src.pipeline.telemetry_collector import TelemetryCollector
 
@@ -32,7 +32,7 @@ async def get_monitoring_history(
     end_date: Optional[datetime] = Query(None, description="End date for filtering"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -40,22 +40,22 @@ async def get_monitoring_history(
     
     Returns crawl results filtered by site, date range, etc.
     """
-    query = db.query(CrawlResult)
+    stmt = select(CrawlResult)
     
     if site_id is not None:
-        query = query.filter(CrawlResult.site_id == site_id)
+        stmt = stmt.where(CrawlResult.site_id == site_id)
     
     if start_date is not None:
-        query = query.filter(CrawlResult.crawled_at >= start_date)
+        stmt = stmt.where(CrawlResult.crawled_at >= start_date)
     
     if end_date is not None:
-        query = query.filter(CrawlResult.crawled_at <= end_date)
+        stmt = stmt.where(CrawlResult.crawled_at <= end_date)
     
-    query = query.order_by(CrawlResult.crawled_at.desc())
+    stmt = stmt.order_by(CrawlResult.crawled_at.desc())
+    stmt = stmt.offset(offset).limit(limit)
     
-    results = query.offset(offset).limit(limit).all()
-    
-    return results
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
 @router.get("/violations", response_model=List[ViolationResponse])
@@ -67,7 +67,7 @@ async def get_violations(
     end_date: Optional[datetime] = Query(None, description="End date for filtering"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -75,62 +75,66 @@ async def get_violations(
     
     Returns violations filtered by site, type, severity, date range, etc.
     """
-    query = db.query(Violation)
+    stmt = select(Violation)
     
     if violation_type is not None:
-        query = query.filter(Violation.violation_type == violation_type)
+        stmt = stmt.where(Violation.violation_type == violation_type)
     
     if severity is not None:
-        query = query.filter(Violation.severity == severity)
+        stmt = stmt.where(Violation.severity == severity)
     
     if start_date is not None:
-        query = query.filter(Violation.detected_at >= start_date)
+        stmt = stmt.where(Violation.detected_at >= start_date)
     
     if end_date is not None:
-        query = query.filter(Violation.detected_at <= end_date)
+        stmt = stmt.where(Violation.detected_at <= end_date)
     
-    query = query.order_by(Violation.detected_at.desc())
+    stmt = stmt.order_by(Violation.detected_at.desc())
+    stmt = stmt.offset(offset).limit(limit)
     
-    results = query.offset(offset).limit(limit).all()
-    
-    return results
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
 @router.get("/statistics", response_model=MonitoringStatistics)
-async def get_statistics(db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_statistics(db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get monitoring statistics.
     
     Returns overall statistics about monitoring sites, violations, and success rates.
     """
-    total_sites = db.query(func.count(MonitoringSite.id)).scalar() or 0
-    active_sites = db.query(func.count(MonitoringSite.id)).filter(
-        MonitoringSite.is_active == True
-    ).scalar() or 0
+    total_sites = (await db.execute(select(func.count(MonitoringSite.id)))).scalar() or 0
+    active_sites = (await db.execute(
+        select(func.count(MonitoringSite.id)).where(MonitoringSite.is_active == True)
+    )).scalar() or 0
 
-    total_violations = db.query(func.count(Violation.id)).scalar() or 0
-    high_severity_violations = db.query(func.count(Violation.id)).filter(
-        Violation.severity == "high"
-    ).scalar() or 0
+    total_violations = (await db.execute(select(func.count(Violation.id)))).scalar() or 0
+    high_severity_violations = (await db.execute(
+        select(func.count(Violation.id)).where(Violation.severity == "high")
+    )).scalar() or 0
 
     # Calculate success rate from crawl results
-    total_crawls = db.query(func.count(CrawlResult.id)).scalar() or 0
-    successful_crawls = db.query(func.count(CrawlResult.id)).filter(
-        CrawlResult.status_code >= 200,
-        CrawlResult.status_code < 400
-    ).scalar() or 0
+    total_crawls = (await db.execute(select(func.count(CrawlResult.id)))).scalar() or 0
+    successful_crawls = (await db.execute(
+        select(func.count(CrawlResult.id)).where(
+            CrawlResult.status_code >= 200,
+            CrawlResult.status_code < 400,
+        )
+    )).scalar() or 0
     success_rate = (successful_crawls / total_crawls * 100.0) if total_crawls > 0 else 100.0
 
-    last_crawl_result = db.query(func.max(CrawlResult.crawled_at)).scalar()
+    last_crawl_result = (await db.execute(select(func.max(CrawlResult.crawled_at)))).scalar()
 
     # Count fake site alerts
-    fake_site_alerts = db.query(func.count(Alert.id)).filter(
-        Alert.alert_type == "fake_site"
-    ).scalar() or 0
-    unresolved_fake_site_alerts = db.query(func.count(Alert.id)).filter(
-        Alert.alert_type == "fake_site",
-        Alert.is_resolved == False
-    ).scalar() or 0
+    fake_site_alerts = (await db.execute(
+        select(func.count(Alert.id)).where(Alert.alert_type == "fake_site")
+    )).scalar() or 0
+    unresolved_fake_site_alerts = (await db.execute(
+        select(func.count(Alert.id)).where(
+            Alert.alert_type == "fake_site",
+            Alert.is_resolved == False,
+        )
+    )).scalar() or 0
 
     return MonitoringStatistics(
         total_sites=total_sites,

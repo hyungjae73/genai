@@ -11,8 +11,8 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Alert, MonitoringSite, ReviewDecision, ReviewItem, VerificationResult, Violation
 from src.review.state_machine import validate_transition
@@ -35,7 +35,7 @@ ENQUEUE_SEVERITIES = {"critical", "high", "medium"}
 class ReviewService:
     """審査ワークフローのビジネスロジックを担当するサービス層。"""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.audit_logger = AuditLogger(db)
 
@@ -43,7 +43,7 @@ class ReviewService:
     # 自動投入
     # ------------------------------------------------------------------ #
 
-    def enqueue_from_alert(self, alert: Alert) -> Optional[ReviewItem]:
+    async def enqueue_from_alert(self, alert: Alert) -> Optional[ReviewItem]:
         """Alert から ReviewItem を作成してキューに投入する。
 
         severity が critical/high/medium の場合のみ投入。
@@ -56,11 +56,10 @@ class ReviewService:
             return None
 
         # 重複チェック (要件 2.5)
-        existing = (
-            self.db.query(ReviewItem)
-            .filter(ReviewItem.alert_id == alert.id)
-            .first()
+        result = await self.db.execute(
+            select(ReviewItem).where(ReviewItem.alert_id == alert.id)
         )
+        existing = result.scalar_one_or_none()
         if existing:
             return None
 
@@ -80,11 +79,11 @@ class ReviewService:
             priority=priority,
         )
         self.db.add(item)
-        self.db.commit()
-        self.db.refresh(item)
+        await self.db.commit()
+        await self.db.refresh(item)
         return item
 
-    def enqueue_from_dark_pattern(
+    async def enqueue_from_dark_pattern(
         self, site_id: int, alert: Alert, score: float
     ) -> Optional[ReviewItem]:
         """ダークパターン検出時に ReviewItem を作成する。
@@ -98,11 +97,10 @@ class ReviewService:
 
         # 重複チェック
         if alert is not None:
-            existing = (
-                self.db.query(ReviewItem)
-                .filter(ReviewItem.alert_id == alert.id)
-                .first()
+            result = await self.db.execute(
+                select(ReviewItem).where(ReviewItem.alert_id == alert.id)
             )
+            existing = result.scalar_one_or_none()
             if existing:
                 return None
 
@@ -118,22 +116,22 @@ class ReviewService:
             priority=priority,
         )
         self.db.add(item)
-        self.db.commit()
-        self.db.refresh(item)
+        await self.db.commit()
+        await self.db.refresh(item)
         return item
 
     # ------------------------------------------------------------------ #
     # 一次審査
     # ------------------------------------------------------------------ #
 
-    def assign_reviewer(
+    async def assign_reviewer(
         self, review_item_id: int, reviewer_id: int, username: str
     ) -> ReviewItem:
         """審査案件に担当者を割り当て、status を in_review に遷移する。
 
         要件: 3.5, 10.1
         """
-        item = self._get_item_or_404(review_item_id)
+        item = await self._get_item_or_404(review_item_id)
 
         if not validate_transition(item.status, "in_review"):
             raise HTTPException(
@@ -144,8 +142,8 @@ class ReviewService:
         item.status = "in_review"
         item.assigned_to = reviewer_id
         item.updated_at = datetime.utcnow()
-        self.db.commit()
-        self.db.refresh(item)
+        await self.db.commit()
+        await self.db.refresh(item)
 
         self.audit_logger.log(
             user=username,
@@ -156,7 +154,7 @@ class ReviewService:
         )
         return item
 
-    def decide_primary(
+    async def decide_primary(
         self,
         review_item_id: int,
         decision: str,
@@ -168,7 +166,7 @@ class ReviewService:
 
         要件: 3.7-3.11, 5.2, 5.3
         """
-        item = self._get_item_or_404(review_item_id)
+        item = await self._get_item_or_404(review_item_id)
 
         if not validate_transition(item.status, decision):
             raise HTTPException(
@@ -190,10 +188,10 @@ class ReviewService:
         self.db.add(record)
 
         # Alert 更新 (要件 6.1, 6.2)
-        self._update_alert_resolution(item, decision)
+        await self._update_alert_resolution(item, decision)
 
-        self.db.commit()
-        self.db.refresh(record)
+        await self.db.commit()
+        await self.db.refresh(record)
 
         self.audit_logger.log(
             user=username,
@@ -208,7 +206,7 @@ class ReviewService:
 
         return record
 
-    def decide_secondary(
+    async def decide_secondary(
         self,
         review_item_id: int,
         decision: str,
@@ -220,7 +218,7 @@ class ReviewService:
 
         要件: 4.3-4.6, 5.2, 5.3
         """
-        item = self._get_item_or_404(review_item_id)
+        item = await self._get_item_or_404(review_item_id)
 
         if not validate_transition(item.status, decision):
             raise HTTPException(
@@ -242,10 +240,10 @@ class ReviewService:
         self.db.add(record)
 
         # Alert 更新 (要件 6.1, 6.2)
-        self._update_alert_resolution(item, decision)
+        await self._update_alert_resolution(item, decision)
 
-        self.db.commit()
-        self.db.refresh(record)
+        await self.db.commit()
+        await self.db.refresh(record)
 
         self.audit_logger.log(
             user=username,
@@ -264,7 +262,7 @@ class ReviewService:
     # クエリ
     # ------------------------------------------------------------------ #
 
-    def list_reviews(
+    async def list_reviews(
         self,
         status: Optional[str] = None,
         priority: Optional[str] = None,
@@ -277,71 +275,74 @@ class ReviewService:
 
         要件: 7.1-7.6
         """
-        from src.models import ReviewItem as RI
-        from sqlalchemy import case
-
-        # priority の ORDER BY 用 CASE 式（SQLAlchemy 2.x 構文）
+        # priority の ORDER BY 用 CASE 式
         priority_order = case(
-            (RI.priority == "critical", 1),
-            (RI.priority == "high", 2),
-            (RI.priority == "medium", 3),
-            (RI.priority == "low", 4),
+            (ReviewItem.priority == "critical", 1),
+            (ReviewItem.priority == "high", 2),
+            (ReviewItem.priority == "medium", 3),
+            (ReviewItem.priority == "low", 4),
             else_=5,
         )
 
-        query = self.db.query(RI)
+        stmt = select(ReviewItem)
 
         if status is not None:
-            query = query.filter(RI.status == status)
+            stmt = stmt.where(ReviewItem.status == status)
         if priority is not None:
-            query = query.filter(RI.priority == priority)
+            stmt = stmt.where(ReviewItem.priority == priority)
         if review_type is not None:
-            query = query.filter(RI.review_type == review_type)
+            stmt = stmt.where(ReviewItem.review_type == review_type)
         if assigned_to is not None:
-            query = query.filter(RI.assigned_to == assigned_to)
+            stmt = stmt.where(ReviewItem.assigned_to == assigned_to)
 
-        total = query.count()
-        items = (
-            query.order_by(priority_order, RI.created_at.asc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar() or 0
+
+        # Fetch items
+        stmt = stmt.order_by(priority_order, ReviewItem.created_at.asc()).offset(offset).limit(limit)
+        result = await self.db.execute(stmt)
+        items = result.scalars().all()
+
         return items, total
 
-    def get_review_detail(self, review_item_id: int) -> dict:
+    async def get_review_detail(self, review_item_id: int) -> dict:
         """統合ビュー: Alert + Violation + VerificationResult + Site + Decisions。
 
         要件: 3.3, 9.1-9.6
         """
-        item = self._get_item_or_404(review_item_id)
+        item = await self._get_item_or_404(review_item_id)
 
         alert: Optional[Alert] = None
         if item.alert_id:
-            alert = self.db.query(Alert).filter(Alert.id == item.alert_id).first()
+            result = await self.db.execute(select(Alert).where(Alert.id == item.alert_id))
+            alert = result.scalar_one_or_none()
 
-        site = self.db.query(MonitoringSite).filter(MonitoringSite.id == item.site_id).first()
+        result = await self.db.execute(select(MonitoringSite).where(MonitoringSite.id == item.site_id))
+        site = result.scalar_one_or_none()
 
         violation: Optional[Violation] = None
         verification: Optional[VerificationResult] = None
 
         if alert and alert.violation_id:
-            violation = self.db.query(Violation).filter(Violation.id == alert.violation_id).first()
+            result = await self.db.execute(select(Violation).where(Violation.id == alert.violation_id))
+            violation = result.scalar_one_or_none()
 
         if item.review_type in ("dark_pattern", "fake_site") and item.site_id:
-            verification = (
-                self.db.query(VerificationResult)
-                .filter(VerificationResult.site_id == item.site_id)
+            result = await self.db.execute(
+                select(VerificationResult)
+                .where(VerificationResult.site_id == item.site_id)
                 .order_by(VerificationResult.created_at.desc())
-                .first()
+                .limit(1)
             )
+            verification = result.scalar_one_or_none()
 
-        decisions = (
-            self.db.query(ReviewDecision)
-            .filter(ReviewDecision.review_item_id == review_item_id)
+        result = await self.db.execute(
+            select(ReviewDecision)
+            .where(ReviewDecision.review_item_id == review_item_id)
             .order_by(ReviewDecision.decided_at.asc())
-            .all()
         )
+        decisions = result.scalars().all()
 
         return {
             "review_item": item,
@@ -352,39 +353,37 @@ class ReviewService:
             "decisions": decisions,
         }
 
-    def get_stats(self) -> dict:
+    async def get_stats(self) -> dict:
         """審査統計情報を返す。
 
         要件: 8.2-8.4
         """
-        from src.models import ReviewItem as RI
-
         # by_status
-        status_counts = (
-            self.db.query(RI.status, func.count(RI.id))
-            .group_by(RI.status)
-            .all()
+        result = await self.db.execute(
+            select(ReviewItem.status, func.count(ReviewItem.id))
+            .group_by(ReviewItem.status)
         )
+        status_counts = result.all()
         by_status = {s: c for s, c in status_counts}
         for s in ("pending", "in_review", "escalated", "approved", "rejected"):
             by_status.setdefault(s, 0)
 
         # by_priority (pending のみ)
-        priority_counts = (
-            self.db.query(RI.priority, func.count(RI.id))
-            .filter(RI.status == "pending")
-            .group_by(RI.priority)
-            .all()
+        result = await self.db.execute(
+            select(ReviewItem.priority, func.count(ReviewItem.id))
+            .where(ReviewItem.status == "pending")
+            .group_by(ReviewItem.priority)
         )
+        priority_counts = result.all()
         by_priority = {p: c for p, c in priority_counts}
 
         # by_review_type (pending のみ)
-        type_counts = (
-            self.db.query(RI.review_type, func.count(RI.id))
-            .filter(RI.status == "pending")
-            .group_by(RI.review_type)
-            .all()
+        result = await self.db.execute(
+            select(ReviewItem.review_type, func.count(ReviewItem.id))
+            .where(ReviewItem.status == "pending")
+            .group_by(ReviewItem.review_type)
         )
+        type_counts = result.all()
         by_review_type = {t: c for t, c in type_counts}
 
         return {
@@ -393,36 +392,43 @@ class ReviewService:
             "by_review_type": by_review_type,
         }
 
-    def get_escalated_reviews(
+    async def get_escalated_reviews(
         self, limit: int = 20, offset: int = 0
     ) -> tuple[list[ReviewItem], int]:
         """エスカレーション案件一覧を返す。
 
         要件: 4.1
         """
-        from src.models import ReviewItem as RI
+        stmt = select(ReviewItem).where(ReviewItem.status == "escalated")
 
-        query = self.db.query(RI).filter(RI.status == "escalated")
-        total = query.count()
-        items = query.order_by(RI.created_at.asc()).offset(offset).limit(limit).all()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar() or 0
+
+        result = await self.db.execute(
+            stmt.order_by(ReviewItem.created_at.asc()).offset(offset).limit(limit)
+        )
+        items = result.scalars().all()
         return items, total
 
-    def get_decisions(self, review_item_id: int) -> list[ReviewDecision]:
+    async def get_decisions(self, review_item_id: int) -> list[ReviewDecision]:
         """判定履歴を返す。要件: 5.4"""
-        self._get_item_or_404(review_item_id)
-        return (
-            self.db.query(ReviewDecision)
-            .filter(ReviewDecision.review_item_id == review_item_id)
+        await self._get_item_or_404(review_item_id)
+        result = await self.db.execute(
+            select(ReviewDecision)
+            .where(ReviewDecision.review_item_id == review_item_id)
             .order_by(ReviewDecision.decided_at.asc())
-            .all()
         )
+        return result.scalars().all()
 
     # ------------------------------------------------------------------ #
     # 内部ヘルパー
     # ------------------------------------------------------------------ #
 
-    def _get_item_or_404(self, review_item_id: int) -> ReviewItem:
-        item = self.db.query(ReviewItem).filter(ReviewItem.id == review_item_id).first()
+    async def _get_item_or_404(self, review_item_id: int) -> ReviewItem:
+        result = await self.db.execute(
+            select(ReviewItem).where(ReviewItem.id == review_item_id)
+        )
+        item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -430,11 +436,12 @@ class ReviewService:
             )
         return item
 
-    def _update_alert_resolution(self, item: ReviewItem, decision: str) -> None:
+    async def _update_alert_resolution(self, item: ReviewItem, decision: str) -> None:
         """approved 時に Alert.is_resolved = True に更新する。要件: 6.1, 6.2"""
         if item.alert_id is None:
             return
-        alert = self.db.query(Alert).filter(Alert.id == item.alert_id).first()
+        result = await self.db.execute(select(Alert).where(Alert.id == item.alert_id))
+        alert = result.scalar_one_or_none()
         if alert is None:
             return
         if decision == "approved":

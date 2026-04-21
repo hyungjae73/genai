@@ -14,10 +14,11 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import MonitoringSite, VerificationResult
 
 router = APIRouter()
@@ -70,8 +71,9 @@ class DarkPatternHistoryResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _get_site_or_404(site_id: int, db: Session) -> MonitoringSite:
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+async def _get_site_or_404(site_id: int, db: AsyncSession) -> MonitoringSite:
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if site is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -102,7 +104,7 @@ def _to_history_item(vr: VerificationResult) -> DarkPatternHistoryItem:
 )
 async def get_latest_dark_patterns(
     site_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ) -> Optional[DarkPatternResponse]:
     """Return the most recent dark pattern detection result for a site.
@@ -110,17 +112,18 @@ async def get_latest_dark_patterns(
     Returns null (HTTP 200 with null body) when no detection data exists yet.
     Returns HTTP 404 when the site itself does not exist.
     """
-    _get_site_or_404(site_id, db)
+    await _get_site_or_404(site_id, db)
 
-    vr = (
-        db.query(VerificationResult)
-        .filter(
+    result = await db.execute(
+        select(VerificationResult)
+        .where(
             VerificationResult.site_id == site_id,
             VerificationResult.dark_pattern_score.isnot(None),
         )
         .order_by(VerificationResult.created_at.desc())
-        .first()
+        .limit(1)
     )
+    vr = result.scalar_one_or_none()
 
     if vr is None:
         return None
@@ -144,7 +147,7 @@ async def get_dark_pattern_history(
     site_id: int,
     limit: int = 50,
     offset: int = 0,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ) -> DarkPatternHistoryResponse:
     """Return paginated history of dark pattern detection results for a site.
@@ -152,19 +155,29 @@ async def get_dark_pattern_history(
     Returns HTTP 404 when the site does not exist.
     Returns an empty results list when no detection data exists.
     """
-    _get_site_or_404(site_id, db)
+    await _get_site_or_404(site_id, db)
 
-    query = (
-        db.query(VerificationResult)
-        .filter(
+    base_stmt = (
+        select(VerificationResult)
+        .where(
             VerificationResult.site_id == site_id,
             VerificationResult.dark_pattern_score.isnot(None),
         )
-        .order_by(VerificationResult.created_at.desc())
     )
 
-    total = query.count()
-    rows = query.offset(offset).limit(limit).all()
+    # Count total
+    count_result = await db.execute(
+        select(func.count()).select_from(base_stmt.subquery())
+    )
+    total = count_result.scalar() or 0
+
+    # Fetch rows
+    result = await db.execute(
+        base_stmt.order_by(VerificationResult.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = result.scalars().all()
 
     return DarkPatternHistoryResponse(
         site_id=site_id,

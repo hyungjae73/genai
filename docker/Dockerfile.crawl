@@ -1,0 +1,36 @@
+# ---- Builder Stage ----
+FROM python:3.11-slim AS builder
+WORKDIR /app
+RUN apt-get update && apt-get install -y gcc postgresql-client && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ---- Runtime Stage (Playwright公式イメージ) ----
+# Playwright_Image にプリインストール済み:
+# - Chromium, Firefox, WebKit
+# - libnss3, libatk, libcups, libdrm, libdbus, libxkbcommon 等
+# - fonts-liberation, xdg-utils
+FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy AS production
+WORKDIR /app
+
+# 追加パッケージ: Tesseract OCR + CJKフォント
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    tesseract-ocr tesseract-ocr-jpn \
+    fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+COPY src/ ./src/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+RUN mkdir -p /app/screenshots
+
+# playwright install chromium は不要（プリインストール済み）
+# libnss3 等の apt-get も不要（プリインストール済み）
+
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["celery", "-A", "src.celery_app", "worker", "-Q", "crawl", "--loglevel=info", "--concurrency=2"]

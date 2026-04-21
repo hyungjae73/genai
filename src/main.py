@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI):
     # Startup
     print("Starting Payment Compliance Monitor API...")
     _create_initial_admin()
+
+    from src.core.telemetry import init_telemetry, instrument_fastapi
+    init_telemetry()
+    instrument_fastapi(app)
+
     yield
     # Shutdown
     print("Shutting down Payment Compliance Monitor API...")

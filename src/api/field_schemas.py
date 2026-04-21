@@ -3,7 +3,8 @@ API endpoints for field schema management.
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from src.api.schemas import (
@@ -12,7 +13,7 @@ from src.api.schemas import (
     FieldSchemaResponse,
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import FieldSchema
 
 router = APIRouter()
@@ -20,31 +21,29 @@ router = APIRouter()
 
 @router.get("/category/{category_id}", response_model=List[FieldSchemaResponse])
 async def get_field_schemas_by_category(
-    category_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key),
+    category_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key),
 ):
     """Get all field schemas for a category, ordered by display_order."""
-    schemas = (
-        db.query(FieldSchema)
-        .filter(FieldSchema.category_id == category_id)
+    result = await db.execute(
+        select(FieldSchema)
+        .where(FieldSchema.category_id == category_id)
         .order_by(FieldSchema.display_order)
-        .all()
     )
-    return schemas
+    return result.scalars().all()
 
 
 @router.post("/", response_model=FieldSchemaResponse, status_code=status.HTTP_201_CREATED)
 async def create_field_schema(
-    field_schema: FieldSchemaCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key),
+    field_schema: FieldSchemaCreate, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key),
 ):
     """Create a new field schema. Returns 409 if field_name already exists within the same category."""
-    existing = (
-        db.query(FieldSchema)
-        .filter(
+    result = await db.execute(
+        select(FieldSchema).where(
             FieldSchema.category_id == field_schema.category_id,
             FieldSchema.field_name == field_schema.field_name,
         )
-        .first()
     )
+    existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -61,8 +60,8 @@ async def create_field_schema(
     )
 
     db.add(db_field_schema)
-    db.commit()
-    db.refresh(db_field_schema)
+    await db.commit()
+    await db.refresh(db_field_schema)
 
     return db_field_schema
 
@@ -71,13 +70,14 @@ async def create_field_schema(
 async def update_field_schema(
     field_schema_id: int,
     field_schema_update: FieldSchemaUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """Update a field schema. Returns 404 if not found, 409 if name conflict within same category."""
-    field_schema = (
-        db.query(FieldSchema).filter(FieldSchema.id == field_schema_id).first()
+    result = await db.execute(
+        select(FieldSchema).where(FieldSchema.id == field_schema_id)
     )
+    field_schema = result.scalar_one_or_none()
 
     if not field_schema:
         raise HTTPException(
@@ -89,15 +89,14 @@ async def update_field_schema(
 
     # Check name uniqueness within the same category if name is being updated
     if "field_name" in update_data and update_data["field_name"] != field_schema.field_name:
-        existing = (
-            db.query(FieldSchema)
-            .filter(
+        result = await db.execute(
+            select(FieldSchema).where(
                 FieldSchema.category_id == field_schema.category_id,
                 FieldSchema.field_name == update_data["field_name"],
                 FieldSchema.id != field_schema_id,
             )
-            .first()
         )
+        existing = result.scalar_one_or_none()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -107,20 +106,21 @@ async def update_field_schema(
     for field, value in update_data.items():
         setattr(field_schema, field, value)
 
-    db.commit()
-    db.refresh(field_schema)
+    await db.commit()
+    await db.refresh(field_schema)
 
     return field_schema
 
 
 @router.delete("/{field_schema_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_field_schema(
-    field_schema_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key),
+    field_schema_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key),
 ):
     """Delete a field schema. Returns 404 if not found."""
-    field_schema = (
-        db.query(FieldSchema).filter(FieldSchema.id == field_schema_id).first()
+    result = await db.execute(
+        select(FieldSchema).where(FieldSchema.id == field_schema_id)
     )
+    field_schema = result.scalar_one_or_none()
 
     if not field_schema:
         raise HTTPException(
@@ -128,7 +128,7 @@ async def delete_field_schema(
             detail="フィールドスキーマが見つかりません",
         )
 
-    db.delete(field_schema)
-    db.commit()
+    await db.delete(field_schema)
+    await db.commit()
 
     return None

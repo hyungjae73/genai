@@ -14,7 +14,8 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     NotificationConfigResponse,
@@ -23,7 +24,7 @@ from src.api.schemas import (
     PaginatedNotificationHistoryResponse,
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import MonitoringSite, NotificationRecord
 from src.pipeline.plugins.notification_config import (
     mask_webhook_url,
@@ -35,9 +36,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _get_site_or_404(site_id: int, db: Session) -> MonitoringSite:
+async def _get_site_or_404(site_id: int, db: AsyncSession) -> MonitoringSite:
     """Fetch MonitoringSite or raise 404."""
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if site is None:
         raise HTTPException(status_code=404, detail=f"Site {site_id} not found")
     return site
@@ -47,16 +49,16 @@ def _get_site_or_404(site_id: int, db: Session) -> MonitoringSite:
     "/sites/{site_id}/notification-config",
     response_model=NotificationConfigResponse,
 )
-def get_notification_config(
+async def get_notification_config(
     site_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ) -> NotificationConfigResponse:
     """Return merged notification config with masked webhook URL.
 
     Req 9.1, 9.3, 9.4
     """
-    site = _get_site_or_404(site_id, db)
+    site = await _get_site_or_404(site_id, db)
 
     customer_email = ""
     try:
@@ -80,17 +82,17 @@ def get_notification_config(
     "/sites/{site_id}/notification-config",
     response_model=NotificationConfigResponse,
 )
-def update_notification_config(
+async def update_notification_config(
     site_id: int,
     body: NotificationConfigUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ) -> NotificationConfigResponse:
     """Update site plugin_config.params.NotificationPlugin and return merged config.
 
     Req 9.2, 9.5, 9.6
     """
-    site = _get_site_or_404(site_id, db)
+    site = await _get_site_or_404(site_id, db)
 
     # Build current plugin_config (or empty)
     plugin_config = dict(site.plugin_config) if site.plugin_config else {}
@@ -111,7 +113,8 @@ def update_notification_config(
     # Persist
     site.plugin_config = plugin_config
     db.add(site)
-    db.flush()
+    await db.flush()
+    await db.commit()
 
     # Re-merge to return the effective config
     customer_email = ""
@@ -136,38 +139,39 @@ def update_notification_config(
     "/sites/{site_id}/notifications",
     response_model=PaginatedNotificationHistoryResponse,
 )
-def get_notification_history(
+async def get_notification_history(
     site_id: int,
     channel: Optional[str] = Query(None, description="Filter by channel (slack/email)"),
     status: Optional[str] = Query(None, description="Filter by status (sent/failed/skipped)"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ) -> PaginatedNotificationHistoryResponse:
     """Return paginated notification history with optional filters.
 
     Req 10.1-10.6
     """
-    _get_site_or_404(site_id, db)
+    await _get_site_or_404(site_id, db)
 
-    query = db.query(NotificationRecord).filter(
-        NotificationRecord.site_id == site_id
-    )
+    stmt = select(NotificationRecord).where(NotificationRecord.site_id == site_id)
 
     if channel is not None:
-        query = query.filter(NotificationRecord.channel == channel)
+        stmt = stmt.where(NotificationRecord.channel == channel)
     if status is not None:
-        query = query.filter(NotificationRecord.status == status)
+        stmt = stmt.where(NotificationRecord.status == status)
 
-    total = query.count()
+    # Count total
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar() or 0
 
-    records = (
-        query.order_by(NotificationRecord.sent_at.desc())
+    # Fetch records
+    result = await db.execute(
+        stmt.order_by(NotificationRecord.sent_at.desc())
         .offset(offset)
         .limit(limit)
-        .all()
     )
+    records = result.scalars().all()
 
     items = [
         NotificationHistoryResponse(

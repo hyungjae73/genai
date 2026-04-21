@@ -6,14 +6,15 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from redis.asyncio import Redis
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_redis, require_role
 from src.auth.password import hash_password, validate_password_policy
 from src.auth.rbac import Role
 from src.auth.schemas import AdminResetPasswordRequest, UserCreate, UserResponse, UserUpdate
 from src.auth.session import revoke_all_user_tokens
-from src.database import get_db
+from src.database import get_async_db
 from src.models import AuditLog, User
 
 router = APIRouter()
@@ -23,8 +24,8 @@ router = APIRouter()
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _audit(
-    db: Session,
+async def _audit(
+    db: AsyncSession,
     username: str,
     action: str,
     resource_id: Optional[int] = None,
@@ -41,7 +42,7 @@ def _audit(
         user_agent=request.headers.get("user-agent") if request else None,
     )
     db.add(log)
-    db.flush()
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -49,10 +50,10 @@ def _audit(
 # ---------------------------------------------------------------------------
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(
+async def create_user(
     body: UserCreate,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ):
     """Create a new user (admin only)."""
@@ -65,12 +66,14 @@ def create_user(
         )
 
     # Duplicate checks
-    if db.query(User).filter(User.username == body.username).first():
+    result = await db.execute(select(User).where(User.username == body.username))
+    if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="このユーザ名は既に使用されています",
         )
-    if db.query(User).filter(User.email == body.email).first():
+    result = await db.execute(select(User).where(User.email == body.email))
+    if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="このメールアドレスは既に使用されています",
@@ -83,46 +86,51 @@ def create_user(
         role=body.role,
     )
     db.add(user)
-    db.flush()  # populate user.id
+    await db.flush()  # populate user.id
 
-    _audit(db, current_user.username, "create", user.id,
-           {"username": body.username, "role": body.role}, request)
+    await _audit(db, current_user.username, "create", user.id,
+                 {"username": body.username, "role": body.role}, request)
+
+    await db.commit()
 
     return user
 
 
 @router.get("/", response_model=List[UserResponse])
-def list_users(
-    db: Session = Depends(get_db),
+async def list_users(
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ):
     """List all users (admin only). hashed_password is excluded by the schema."""
-    return db.query(User).all()
+    result = await db.execute(select(User))
+    return result.scalars().all()
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user(
+async def get_user(
     user_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ):
     """Get a single user by ID (admin only)."""
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザが見つかりません")
     return user
 
 
 @router.put("/{user_id}", response_model=UserResponse)
-def update_user(
+async def update_user(
     user_id: int,
     body: UserUpdate,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ):
     """Update a user (admin only). Username changes are not allowed."""
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザが見つかりません")
 
@@ -130,9 +138,10 @@ def update_user(
 
     # Apply each provided field
     if "email" in update_data and update_data["email"] is not None:
-        existing = db.query(User).filter(
-            User.email == update_data["email"], User.id != user_id
-        ).first()
+        result = await db.execute(
+            select(User).where(User.email == update_data["email"], User.id != user_id)
+        )
+        existing = result.scalar_one_or_none()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -146,9 +155,11 @@ def update_user(
     if "is_active" in update_data and update_data["is_active"] is not None:
         user.is_active = update_data["is_active"]
 
-    db.flush()
+    await db.flush()
 
-    _audit(db, current_user.username, "update", user.id, update_data, request)
+    await _audit(db, current_user.username, "update", user.id, update_data, request)
+
+    await db.commit()
 
     return user
 
@@ -157,7 +168,7 @@ def update_user(
 async def deactivate_user(
     user_id: int,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
     redis: Redis = Depends(get_redis),
 ):
@@ -168,18 +179,21 @@ async def deactivate_user(
             detail="自分自身を無効化することはできません",
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザが見つかりません")
 
     user.is_active = False
-    db.flush()
+    await db.flush()
 
     # Revoke all refresh tokens in Redis
     await revoke_all_user_tokens(user.id, redis)
 
-    _audit(db, current_user.username, "deactivate", user.id,
-           {"username": user.username}, request)
+    await _audit(db, current_user.username, "deactivate", user.id,
+                 {"username": user.username}, request)
+
+    await db.commit()
 
     return user
 
@@ -189,12 +203,13 @@ async def reset_password(
     user_id: int,
     body: AdminResetPasswordRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
     redis: Redis = Depends(get_redis),
 ):
     """Reset a user's password (admin only). Sets must_change_password flag."""
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザが見つかりません")
 
@@ -208,12 +223,14 @@ async def reset_password(
 
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = True
-    db.flush()
+    await db.flush()
 
     # Revoke all sessions for the target user
     await revoke_all_user_tokens(user.id, redis)
 
-    _audit(db, current_user.username, "reset_password", user.id,
-           {"username": user.username}, request)
+    await _audit(db, current_user.username, "reset_password", user.id,
+                 {"username": user.username}, request)
+
+    await db.commit()
 
     return user

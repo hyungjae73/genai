@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     ExtractedDataResponse,
@@ -15,7 +16,7 @@ from src.api.schemas import (
     FieldSuggestionResponse,
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import ExtractedData, CrawlResult
 from src.ocr_engine import OCREngine
 
@@ -53,7 +54,7 @@ def _infer_field_type(value: str) -> str:
 
 
 @router.post("/extract/{screenshot_id}", response_model=ExtractedDataResponse, status_code=status.HTTP_201_CREATED)
-async def extract_data(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def extract_data(screenshot_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Run OCR extraction on a screenshot.
 
@@ -62,11 +63,10 @@ async def extract_data(screenshot_id: int, db: Session = Depends(get_db), curren
     Returns 404 if the screenshot is not found.
     """
     # Check if extraction already exists
-    existing = (
-        db.query(ExtractedData)
-        .filter(ExtractedData.screenshot_id == screenshot_id)
-        .first()
+    result = await db.execute(
+        select(ExtractedData).where(ExtractedData.screenshot_id == screenshot_id)
     )
+    existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -74,9 +74,10 @@ async def extract_data(screenshot_id: int, db: Session = Depends(get_db), curren
         )
 
     # Verify screenshot exists
-    crawl_result = (
-        db.query(CrawlResult).filter(CrawlResult.id == screenshot_id).first()
+    result = await db.execute(
+        select(CrawlResult).where(CrawlResult.id == screenshot_id)
     )
+    crawl_result = result.scalar_one_or_none()
     if not crawl_result or not crawl_result.screenshot_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -116,24 +117,23 @@ async def extract_data(screenshot_id: int, db: Session = Depends(get_db), curren
     )
 
     db.add(extracted_data)
-    db.commit()
-    db.refresh(extracted_data)
+    await db.commit()
+    await db.refresh(extracted_data)
 
     return extracted_data
 
 
 @router.get("/results/{screenshot_id}", response_model=ExtractedDataResponse)
-async def get_extraction_results(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_extraction_results(screenshot_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get extracted data for a screenshot.
 
     Returns 404 if no extraction results found.
     """
-    extracted = (
-        db.query(ExtractedData)
-        .filter(ExtractedData.screenshot_id == screenshot_id)
-        .first()
+    result = await db.execute(
+        select(ExtractedData).where(ExtractedData.screenshot_id == screenshot_id)
     )
+    extracted = result.scalar_one_or_none()
     if not extracted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -147,7 +147,7 @@ async def get_extraction_results(screenshot_id: int, db: Session = Depends(get_d
 async def update_extraction_results(
     extracted_data_id: int,
     update: ExtractedDataUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -155,11 +155,10 @@ async def update_extraction_results(
 
     Returns 404 if not found.
     """
-    extracted = (
-        db.query(ExtractedData)
-        .filter(ExtractedData.id == extracted_data_id)
-        .first()
+    result = await db.execute(
+        select(ExtractedData).where(ExtractedData.id == extracted_data_id)
     )
+    extracted = result.scalar_one_or_none()
     if not extracted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -170,8 +169,8 @@ async def update_extraction_results(
     for field, value in update_data.items():
         setattr(extracted, field, value)
 
-    db.commit()
-    db.refresh(extracted)
+    await db.commit()
+    await db.refresh(extracted)
 
     return extracted
 
@@ -180,18 +179,17 @@ async def update_extraction_results(
     "/suggest-fields/{screenshot_id}",
     response_model=List[FieldSuggestionResponse],
 )
-async def suggest_fields(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def suggest_fields(screenshot_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Analyze extracted data and suggest field schemas.
 
     Returns field suggestions based on the extracted_fields data types.
     Returns 404 if no extraction results found for this screenshot.
     """
-    extracted = (
-        db.query(ExtractedData)
-        .filter(ExtractedData.screenshot_id == screenshot_id)
-        .first()
+    result = await db.execute(
+        select(ExtractedData).where(ExtractedData.screenshot_id == screenshot_id)
     )
+    extracted = result.scalar_one_or_none()
     if not extracted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -9,11 +9,12 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import ScreenshotResponse
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import CrawlResult, MonitoringSite
 from src.screenshot_capture import capture_site_screenshot
 
@@ -29,19 +30,15 @@ async def upload_screenshot(
     site_id: int = Form(...),
     screenshot_type: str = Form(...),  # 'baseline' or 'violation'
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Upload a screenshot for a monitoring site.
-    
-    Args:
-        site_id: Site ID
-        screenshot_type: Type of screenshot ('baseline' or 'violation')
-        file: Screenshot file (PNG or PDF)
     """
     # Validate site exists
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -84,8 +81,8 @@ async def upload_screenshot(
     )
     
     db.add(crawl_result)
-    db.commit()
-    db.refresh(crawl_result)
+    await db.commit()
+    await db.refresh(crawl_result)
     
     return ScreenshotResponse(
         id=crawl_result.id,
@@ -102,37 +99,37 @@ async def upload_screenshot(
 async def get_site_screenshots(
     site_id: int,
     screenshot_type: str = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Get all screenshots for a specific site.
-    
-    Args:
-        site_id: Site ID
-        screenshot_type: Optional filter by type ('baseline' or 'violation')
     """
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Site with id {site_id} not found"
         )
     
-    query = db.query(CrawlResult).filter(
-        CrawlResult.site_id == site_id,
-        CrawlResult.screenshot_path.isnot(None)
+    result = await db.execute(
+        select(CrawlResult)
+        .where(
+            CrawlResult.site_id == site_id,
+            CrawlResult.screenshot_path.isnot(None),
+        )
+        .order_by(CrawlResult.crawled_at.desc())
     )
-    
-    crawl_results = query.order_by(CrawlResult.crawled_at.desc()).all()
+    crawl_results = result.scalars().all()
     
     screenshots = []
-    for result in crawl_results:
+    for cr in crawl_results:
         # Determine screenshot type from filename
-        if result.screenshot_path:
-            if 'baseline' in result.screenshot_path:
+        if cr.screenshot_path:
+            if 'baseline' in cr.screenshot_path:
                 ss_type = 'baseline'
-            elif 'violation' in result.screenshot_path:
+            elif 'violation' in cr.screenshot_path:
                 ss_type = 'violation'
             else:
                 ss_type = 'unknown'
@@ -141,30 +138,28 @@ async def get_site_screenshots(
             if screenshot_type and ss_type != screenshot_type:
                 continue
             
-            file_ext = Path(result.screenshot_path).suffix[1:]  # Remove dot
+            file_ext = Path(cr.screenshot_path).suffix[1:]  # Remove dot
             
             screenshots.append(ScreenshotResponse(
-                id=result.id,
+                id=cr.id,
                 site_id=site_id,
                 site_name=site.name,
                 screenshot_type=ss_type,
-                file_path=result.screenshot_path,
+                file_path=cr.screenshot_path,
                 file_format=file_ext,
-                crawled_at=result.crawled_at
+                crawled_at=cr.crawled_at
             ))
     
     return screenshots
 
 
 @router.get("/view/{screenshot_id}")
-async def view_screenshot(screenshot_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def view_screenshot(screenshot_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     View a screenshot file.
-    
-    Args:
-        screenshot_id: Screenshot (CrawlResult) ID
     """
-    crawl_result = db.query(CrawlResult).filter(CrawlResult.id == screenshot_id).first()
+    result = await db.execute(select(CrawlResult).where(CrawlResult.id == screenshot_id))
+    crawl_result = result.scalar_one_or_none()
     
     if not crawl_result or not crawl_result.screenshot_path:
         raise HTTPException(
@@ -192,17 +187,12 @@ async def view_screenshot(screenshot_id: int, db: Session = Depends(get_db), cur
 
 
 @router.delete("/{crawl_result_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_screenshot(crawl_result_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def delete_screenshot(crawl_result_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a screenshot associated with a crawl result.
-
-    Removes the screenshot file from disk and clears the screenshot_path
-    on the crawl result record. The crawl result itself is preserved.
-
-    Args:
-        crawl_result_id: CrawlResult ID whose screenshot should be deleted.
     """
-    crawl_result = db.query(CrawlResult).filter(CrawlResult.id == crawl_result_id).first()
+    result = await db.execute(select(CrawlResult).where(CrawlResult.id == crawl_result_id))
+    crawl_result = result.scalar_one_or_none()
 
     if not crawl_result:
         raise HTTPException(
@@ -223,10 +213,9 @@ async def delete_screenshot(crawl_result_id: int, db: Session = Depends(get_db),
 
     # Clear screenshot path but keep the crawl result
     crawl_result.screenshot_path = None
-    db.commit()
+    await db.commit()
 
     return None
-
 
 
 @router.post("/capture", response_model=ScreenshotResponse, status_code=status.HTTP_201_CREATED)
@@ -234,19 +223,15 @@ async def capture_screenshot(
     site_id: int,
     screenshot_type: str,  # 'baseline' or 'violation'
     file_format: str = "png",  # 'png' or 'pdf'
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Capture a screenshot by crawling the site URL.
-    
-    Args:
-        site_id: Site ID
-        screenshot_type: Type of screenshot ('baseline' or 'violation')
-        file_format: File format ('png' or 'pdf')
     """
     # Validate site exists
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -287,8 +272,8 @@ async def capture_screenshot(
         )
         
         db.add(crawl_result)
-        db.commit()
-        db.refresh(crawl_result)
+        await db.commit()
+        await db.refresh(crawl_result)
         
         return ScreenshotResponse(
             id=crawl_result.id,

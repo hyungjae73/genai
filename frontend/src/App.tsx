@@ -18,6 +18,8 @@ import ReviewDashboard from './pages/ReviewDashboard';
 import Categories from './pages/Categories';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 import { AppLayout } from './layouts/AppLayout';
 import './App.css';
 
@@ -68,6 +70,7 @@ class ErrorBoundary extends Component<
 function App() {
   return (
     <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
           <Routes>
@@ -159,6 +162,7 @@ function App() {
           </Routes>
         </AuthProvider>
       </Router>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

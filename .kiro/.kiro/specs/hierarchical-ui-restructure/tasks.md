@@ -1,0 +1,264 @@
+# 実装計画: 親子関係UIリストラクチャ
+
+## 概要
+
+決済条件監視システムに階層型ビュー（`/hierarchy`）を追加し、顧客→監視サイト→詳細パネル（4タブ）の3階層UIを実装する。バックエンドにはカテゴリ管理・フィールドスキーマ・データ抽出・手動クロールの新規APIを追加し、フロントエンドには階層型ビューページと関連コンポーネントを構築する。既存ページはそのまま維持する。
+
+## タスク
+
+- [x] 1. データモデルとDBマイグレーション
+  - [x] 1.1 Category, FieldSchema, ExtractedData モデルを `genai/src/models.py` に追加
+    - Category: id, name(unique), description, color, created_at, updated_at, relationships(sites, field_schemas)
+    - FieldSchema: id, category_id(FK), field_name, field_type, is_required, validation_rules(JSONB), display_order, created_at, updated_at, unique制約(category_id, field_name)
+    - ExtractedData: id, screenshot_id, site_id(FK), extracted_fields(JSONB), confidence_scores(JSONB), status, created_at
+    - _要件: 7.1, 8.1, 8.2, 4.5_
+  - [x] 1.2 既存モデル MonitoringSite, ContractCondition に `category_id` カラムを追加、Alert に `is_resolved`, `site_id` カラムを追加
+    - MonitoringSite: category_id(FK, nullable) + relationship
+    - ContractCondition: category_id(FK, nullable) + relationship
+    - Alert: is_resolved(Boolean, default=False), site_id(FK, nullable)
+    - _要件: 7.3, 6.5_
+  - [x] 1.3 Alembic マイグレーションファイルを生成・適用
+    - `alembic revision --autogenerate` で新テーブル作成 + 既存テーブル変更のマイグレーションを生成
+    - _要件: 7.1, 8.1_
+
+- [x] 2. カテゴリ管理API
+  - [x] 2.1 `genai/src/api/schemas.py` にカテゴリ関連の Pydantic スキーマを追加
+    - CategoryCreate, CategoryUpdate, CategoryResponse
+    - _要件: 7.1, 7.2_
+  - [x] 2.2 `genai/src/api/categories.py` にカテゴリCRUD APIエンドポイントを実装
+    - GET /api/categories/ - 一覧取得
+    - POST /api/categories/ - 新規作成（名前重複時409）
+    - PUT /api/categories/{id} - 更新
+    - DELETE /api/categories/{id} - 削除（配下サイト・契約条件のcategory_idをNULLに設定）
+    - _要件: 7.1, 7.2, 7.3, 7.4_
+  - [x] 2.3 `genai/src/main.py` にカテゴリルーターを登録
+    - _要件: 7.1_
+  - [x] 2.4 カテゴリCRUD APIのプロパティテストを作成（バックエンド）
+    - **Property 9: カテゴリCRUDの往復**
+    - **検証対象: 要件 7.1**
+  - [x] 2.5 カテゴリ削除時の未分類移動プロパティテストを作成（バックエンド）
+    - **Property 10: カテゴリ削除時の未分類移動**
+    - **検証対象: 要件 7.4**
+  - [x] 2.6 カテゴリ追加の即時反映プロパティテストを作成（バックエンド）
+    - **Property 11: カテゴリ追加の即時反映**
+    - **検証対象: 要件 7.3**
+
+- [x] 3. フィールドスキーマAPI
+  - [x] 3.1 `genai/src/api/schemas.py` にフィールドスキーマ関連の Pydantic スキーマを追加
+    - FieldSchemaCreate, FieldSchemaUpdate, FieldSchemaResponse, FieldSuggestionResponse
+    - field_type のバリデーション（text, number, currency, percentage, date, boolean, list）
+    - _要件: 8.1, 8.2, 8.7_
+  - [x] 3.2 `genai/src/api/field_schemas.py` にフィールドスキーマCRUD APIエンドポイントを実装
+    - GET /api/field-schemas/category/{category_id} - カテゴリ別一覧取得
+    - POST /api/field-schemas/ - 新規作成（同一カテゴリ内重複時409）
+    - PUT /api/field-schemas/{id} - 更新（名前変更、型変更）
+    - DELETE /api/field-schemas/{id} - 削除
+    - _要件: 8.1, 8.2, 8.5_
+  - [x] 3.3 フィールドバリデーションルール適用ロジックを実装
+    - 必須/任意、最小値/最大値、正規表現パターン、リスト選択肢のバリデーション
+    - _要件: 8.7_
+  - [x] 3.4 `genai/src/main.py` にフィールドスキーマルーターを登録
+    - _要件: 8.1_
+  - [x] 3.5 フィールドスキーマCRUDのプロパティテストを作成（バックエンド）
+    - **Property 12: フィールドスキーマCRUDの往復**
+    - **検証対象: 要件 8.1, 8.5**
+  - [x] 3.6 フィールド型の網羅性プロパティテストを作成（バックエンド）
+    - **Property 13: フィールド型の網羅性**
+    - **検証対象: 要件 8.2**
+  - [x] 3.7 フィールドバリデーションルール適用プロパティテストを作成（バックエンド）
+    - **Property 16: フィールドバリデーションルールの適用**
+    - **検証対象: 要件 8.7**
+
+- [x] 4. チェックポイント - バックエンドモデル・カテゴリ・フィールドスキーマAPI
+  - すべてのテストが通ることを確認し、不明点があればユーザーに質問する。
+
+- [x] 5. データ抽出API
+  - [x] 5.1 `genai/src/api/schemas.py` にデータ抽出関連の Pydantic スキーマを追加
+    - ExtractedDataResponse, ExtractedDataUpdate, FieldSuggestionResponse
+    - _要件: 4.5, 4.6, 8.3_
+  - [x] 5.2 `genai/src/api/extraction.py` にデータ抽出APIエンドポイントを実装
+    - POST /api/extraction/extract/{screenshot_id} - OCRデータ抽出実行
+    - GET /api/extraction/results/{screenshot_id} - 抽出結果取得
+    - PUT /api/extraction/results/{id} - 抽出結果編集（ユーザー修正）
+    - POST /api/extraction/suggest-fields/{screenshot_id} - フィールド候補提案
+    - 既存の `genai/src/ocr_engine.py` を活用
+    - _要件: 4.5, 4.6, 8.3, 8.4_
+  - [x] 5.3 `genai/src/main.py` にデータ抽出ルーターを登録
+    - _要件: 4.5_
+  - [x] 5.4 フィールド候補提案の正確性プロパティテストを作成（バックエンド）
+    - **Property 14: フィールド候補提案の正確性**
+    - **検証対象: 要件 8.3**
+  - [x] 5.5 フィールド候補承認によるスキーマ追加プロパティテストを作成（バックエンド）
+    - **Property 15: フィールド候補承認によるスキーマ追加**
+    - **検証対象: 要件 8.4**
+
+- [x] 6. 手動クロールAPIとサイトアラートAPI
+  - [x] 6.1 `genai/src/api/schemas.py` にクロール関連の Pydantic スキーマを追加
+    - CrawlJobResponse, CrawlStatusResponse, CrawlResultResponse
+    - _要件: 9.3, 9.5_
+  - [x] 6.2 `genai/src/api/crawl.py` に手動クロールAPIエンドポイントを実装
+    - POST /api/crawl/site/{site_id} - Celeryタスクとしてクロールジョブを開始、job_idを返す
+    - GET /api/crawl/status/{job_id} - ジョブステータス取得
+    - GET /api/crawl/results/{site_id} - クロール結果履歴取得
+    - GET /api/crawl/results/{site_id}/latest - 最新クロール結果取得
+    - _要件: 9.3, 9.4, 9.5, 9.6, 9.7, 9.9_
+  - [x] 6.3 既存の `genai/src/api/alerts.py` にサイト別アラート取得エンドポイントを追加
+    - GET /api/alerts/site/{site_id} - サイト別アラート取得（is_resolvedフィルター対応）
+    - _要件: 6.1, 6.5_
+  - [x] 6.4 `genai/src/main.py` にクロールルーターを登録
+    - _要件: 9.3_
+
+- [x] 7. チェックポイント - バックエンドAPI全体
+  - すべてのテストが通ることを確認し、不明点があればユーザーに質問する。
+
+- [x] 8. フロントエンドAPIクライアント拡張
+  - [x] 8.1 `genai/frontend/src/services/api.ts` に新規型定義を追加
+    - Category, FieldSchema, ExtractedData, FieldSuggestion, CrawlJobResponse, CrawlStatusResponse, CrawlResult 型
+    - _要件: 7.1, 8.1, 4.5, 9.3_
+  - [x] 8.2 `genai/frontend/src/services/api.ts` に新規API関数を追加
+    - カテゴリCRUD: getCategories, createCategory, updateCategory, deleteCategory
+    - フィールドスキーマCRUD: getFieldSchemas, createFieldSchema, updateFieldSchema, deleteFieldSchema
+    - データ抽出: extractData, getExtractedData, updateExtractedData, suggestFields
+    - アラート: getSiteAlerts
+    - クロール: triggerCrawl, getCrawlStatus, getCrawlResults, getLatestCrawlResult
+    - _要件: 7.1, 8.1, 4.5, 6.1, 9.3_
+
+- [x] 9. 階層型ビューのメインページとコアコンポーネント
+  - [x] 9.1 `genai/frontend/src/pages/HierarchyView.tsx` を作成
+    - 顧客一覧取得（GET /api/customers/）とサイト一覧取得（GET /api/sites/）
+    - 顧客ごとにサイトをグルーピングするロジック
+    - 検索フィールド（顧客名・会社名）
+    - ステータスフィルター（全て/有効/無効）
+    - カテゴリフィルター
+    - ローディングインジケーター、エラー表示
+    - _要件: 1.1, 1.2, 1.6, 1.7, 7.5, 10.1, 10.4_
+  - [x] 9.2 顧客別サイトグルーピングのプロパティテストを作成（フロントエンド）
+    - **Property 1: 顧客別サイトグルーピングの正確性**
+    - **検証対象: 要件 1.1**
+  - [x] 9.3 検索・フィルターの正確性プロパティテストを作成（フロントエンド）
+    - **Property 3: 検索・フィルターの正確性**
+    - **検証対象: 要件 1.6, 1.7, 7.5**
+  - [x] 9.4 `genai/frontend/src/components/hierarchy/CustomerGroup.tsx` を作成
+    - 顧客名、会社名、ステータス（有効/無効）、配下サイト数を表示
+    - 展開/折りたたみインジケーター（矢印アイコン）
+    - 展開時に配下の SiteRow を表示
+    - _要件: 1.2, 1.3, 1.4, 1.5_
+  - [x] 9.5 `genai/frontend/src/components/hierarchy/SiteRow.tsx` を作成
+    - サイト名、URL、カテゴリ、コンプライアンスステータス、最終クロール日時、有効/無効を表示
+    - 展開/折りたたみインジケーター
+    - 「今すぐクロール」ボタン（POST /api/crawl/site/{site_id}）
+    - クロール中スピナー表示＋ボタン無効化
+    - クロール完了後の最終クロール日時更新、クロール結果リンク表示
+    - 展開時に SiteDetailPanel を表示
+    - _要件: 2.1, 2.2, 2.3, 2.6, 9.1, 9.3, 9.4, 9.5, 9.7, 9.9_
+  - [x] 9.6 展開/折りたたみの状態往復プロパティテストを作成（フロントエンド）
+    - **Property 2: 展開/折りたたみの状態往復**
+    - **検証対象: 要件 1.4, 1.5, 2.3, 2.6**
+
+- [x] 10. サイト詳細パネルと4タブコンポーネント
+  - [x] 10.1 `genai/frontend/src/components/hierarchy/SiteDetailPanel.tsx` を作成
+    - 「契約条件」「スクリーンショット」「検証・比較」「アラート」の4タブ
+    - デフォルトで「契約条件」タブを選択
+    - タブ切り替え時にデータを遅延読み込み
+    - タブ内ローディングインジケーター
+    - _要件: 2.4, 2.5, 10.2_
+  - [x] 10.2 デフォルトタブ選択プロパティテストを作成（フロントエンド）
+    - **Property 5: デフォルトタブ選択**
+    - **検証対象: 要件 2.5**
+  - [x] 10.3 タブ選択によるAPI呼び出しの正確性プロパティテストを作成（フロントエンド）
+    - **Property 4: タブ選択によるAPI呼び出しの正確性**
+    - **検証対象: 要件 3.1, 4.1, 5.1, 6.1**
+  - [x] 10.4 `genai/frontend/src/components/hierarchy/tabs/ContractTab.tsx` を作成
+    - GET /api/contracts/site/{site_id} から契約条件を取得
+    - カテゴリ別グルーピング表示
+    - データなし時「契約条件がありません」表示
+    - ローディング・エラー表示
+    - _要件: 3.1, 3.2, 3.3, 3.4, 10.2, 10.4_
+  - [x] 10.5 契約条件のカテゴリ別グルーピングプロパティテストを作成（フロントエンド）
+    - **Property 6: 契約条件のカテゴリ別グルーピング**
+    - **検証対象: 要件 3.3**
+  - [x] 10.6 `genai/frontend/src/components/hierarchy/tabs/ScreenshotTab.tsx` を作成
+    - GET /api/screenshots/site/{site_id} からスクリーンショットを取得
+    - サムネイル表示、タイプ・形式・撮影日時表示
+    - 「データ抽出」ボタン（POST /api/extraction/extract/{screenshot_id}）
+    - 抽出結果プレビュー・編集UI
+    - データなし時「スクリーンショットがありません」表示
+    - 抽出中プログレスインジケーター
+    - _要件: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 10.2, 10.3, 10.4_
+  - [x] 10.7 `genai/frontend/src/components/hierarchy/tabs/VerificationTab.tsx` を作成
+    - GET /api/verification/results/{site_id} から検証結果を取得
+    - ステータス、差異件数、違反件数、実行日時を表示
+    - データなし時「検証結果がありません」表示
+    - _要件: 5.1, 5.2, 5.3, 10.2, 10.4_
+  - [x] 10.8 `genai/frontend/src/components/hierarchy/tabs/AlertTab.tsx` を作成
+    - サイト別アラート取得（GET /api/alerts/site/{site_id}）
+    - 顧客名、商品ページURL、変更箇所（フィールド名・期待値・実際値）表示
+    - 重要度バッジ（緊急/高/中/低）
+    - 検出日時表示
+    - 解決済み/未解決フィルター
+    - 期待値と実際値の並列比較表示
+    - データなし時「アラートがありません」表示
+    - _要件: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 10.2, 10.4_
+  - [x] 10.9 アラート表示の完全性プロパティテストを作成（フロントエンド）
+    - **Property 7: アラート表示の完全性**
+    - **検証対象: 要件 6.2, 6.3, 6.4, 6.6**
+  - [x] 10.10 アラートの解決状態フィルタリングプロパティテストを作成（フロントエンド）
+    - **Property 8: アラートの解決状態フィルタリング**
+    - **検証対象: 要件 6.5**
+
+- [x] 11. チェックポイント - 階層型ビューコアUI
+  - すべてのテストが通ることを確認し、不明点があればユーザーに質問する。
+
+- [x] 12. カテゴリ管理・フィールドスキーマ管理コンポーネント
+  - [x] 12.1 `genai/frontend/src/components/category/CategoryManager.tsx` を作成
+    - カテゴリ一覧表示、新規追加フォーム、名前編集、削除
+    - 名前、説明、色の設定UI
+    - 削除時の確認ダイアログ（「配下のサイト・契約条件は未分類に移動されます」）
+    - _要件: 7.1, 7.2, 7.4_
+  - [x] 12.2 `genai/frontend/src/components/category/FieldSchemaManager.tsx` を作成
+    - カテゴリごとのフィールドスキーマ一覧表示
+    - フィールド追加・編集・削除
+    - 型選択（テキスト、数値、通貨、パーセンテージ、日付、真偽値、リスト）
+    - バリデーションルール設定UI（必須/任意、最小値/最大値、正規表現パターン）
+    - フィールド候補提案の表示・承認UI
+    - _要件: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7_
+  - [x] 12.3 ローディング状態の表示プロパティテストを作成（フロントエンド）
+    - **Property 17: ローディング状態の表示**
+    - **検証対象: 要件 10.1, 10.2, 10.3**
+  - [x] 12.4 エラー状態の表示プロパティテストを作成（フロントエンド）
+    - **Property 18: エラー状態の表示**
+    - **検証対象: 要件 10.4**
+
+- [x] 13. 既存サイト一覧ページの変更と手動クロール統合
+  - [x] 13.1 `genai/frontend/src/pages/Sites.tsx` に「今すぐクロール」ボタンを追加
+    - 各サイト行の操作列に「今すぐクロール」ボタンを追加
+    - クロール実行中はスピナー表示＋ボタン無効化
+    - クロール完了後、サイト一覧を自動リフレッシュ
+    - クロール失敗時エラーメッセージ表示
+    - _要件: 9.2, 9.3, 9.4, 9.5, 9.9_
+  - [x] 13.2 `genai/frontend/src/pages/Sites.tsx` にクロール結果リンクを追加
+    - 最終クロール日時列をクリック可能なリンクに変更
+    - クリックでクロール結果詳細（取得日時・ステータス・検出差異数・スクリーンショット）を表示
+    - _要件: 9.7, 9.8_
+
+- [x] 14. ルーティングとナビゲーション統合
+  - [x] 14.1 `genai/frontend/src/App.tsx` に `/hierarchy` ルートを追加
+    - HierarchyView ページコンポーネントをルーティングに登録
+    - _要件: 11.2_
+  - [x] 14.2 ナビゲーションバーに階層型ビューへのリンクを追加
+    - 既存のナビゲーション構造に「階層型ビュー」リンクを追加
+    - _要件: 11.3_
+  - [x] 14.3 既存ページ（顧客、監視サイト、契約条件、スクリーンショット、検証・比較）が引き続き動作することを確認
+    - 既存ルートが変更されていないことを確認
+    - _要件: 11.1_
+
+- [x] 15. 最終チェックポイント - 全体統合確認
+  - すべてのテストが通ることを確認し、不明点があればユーザーに質問する。
+
+## 備考
+
+- `*` マーク付きのタスクはオプションであり、MVP実装時にはスキップ可能
+- 各タスクは具体的な要件への参照を含み、トレーサビリティを確保
+- チェックポイントで段階的な検証を実施
+- プロパティテストは普遍的な正当性プロパティを検証し、ユニットテストは具体的な例とエッジケースを検証する
+- バックエンド: Python (FastAPI + pytest + hypothesis)、フロントエンド: TypeScript (React + vitest + fast-check)

@@ -6,7 +6,8 @@ associated with crawl results.
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from src.api.schemas import (
@@ -16,7 +17,7 @@ from src.api.schemas import (
 )
 from src.auth import verify_api_key
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import ExtractedPaymentInfo, AuditLog
 from src.sanitize import sanitize_dict, strip_html_tags
 
@@ -29,7 +30,7 @@ router = APIRouter()
 )
 async def get_extracted_data_by_crawl_result(
     crawl_result_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -38,12 +39,13 @@ async def get_extracted_data_by_crawl_result(
     Returns the most recent extraction record linked to the given
     crawl_result_id.
     """
-    record = (
-        db.query(ExtractedPaymentInfo)
-        .filter(ExtractedPaymentInfo.crawl_result_id == crawl_result_id)
+    result = await db.execute(
+        select(ExtractedPaymentInfo)
+        .where(ExtractedPaymentInfo.crawl_result_id == crawl_result_id)
         .order_by(ExtractedPaymentInfo.extracted_at.desc())
-        .first()
+        .limit(1)
     )
+    record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
@@ -62,7 +64,7 @@ async def get_extracted_data_by_site(
     site_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -70,19 +72,22 @@ async def get_extracted_data_by_site(
 
     Default page size is 50 records.
     """
-    base_query = db.query(ExtractedPaymentInfo).filter(
+    base_stmt = select(ExtractedPaymentInfo).where(
         ExtractedPaymentInfo.site_id == site_id,
     )
 
-    total = base_query.count()
+    count_result = await db.execute(
+        select(func.count()).select_from(base_stmt.subquery())
+    )
+    total = count_result.scalar() or 0
 
-    records = (
-        base_query
+    result = await db.execute(
+        base_stmt
         .order_by(ExtractedPaymentInfo.extracted_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all()
     )
+    records = result.scalars().all()
 
     return PaginatedExtractedPaymentInfoResponse(
         items=[_to_response(r) for r in records],
@@ -99,7 +104,7 @@ async def get_extracted_data_by_site(
 async def update_extracted_data(
     id: int,
     updates: ExtractedPaymentInfoUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     api_key: str = Depends(verify_api_key),
     current_user = Depends(get_current_user_or_api_key),
 ):
@@ -108,11 +113,10 @@ async def update_extracted_data(
 
     Requires a valid X-API-Key header. Records changes in audit_logs.
     """
-    record = (
-        db.query(ExtractedPaymentInfo)
-        .filter(ExtractedPaymentInfo.id == id)
-        .first()
+    result = await db.execute(
+        select(ExtractedPaymentInfo).where(ExtractedPaymentInfo.id == id)
     )
+    record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
@@ -146,8 +150,8 @@ async def update_extracted_data(
     )
     db.add(audit_entry)
 
-    db.commit()
-    db.refresh(record)
+    await db.commit()
+    await db.refresh(record)
 
     return _to_response(record)
 
@@ -217,7 +221,7 @@ class RejectRequest(BaseModel):
 @router.post("/{id}/approve")
 async def approve_extracted_data(
     id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     api_key: str = Depends(verify_api_key),
     current_user = Depends(get_current_user_or_api_key),
 ):
@@ -226,11 +230,10 @@ async def approve_extracted_data(
 
     Requires a valid X-API-Key header.
     """
-    record = (
-        db.query(ExtractedPaymentInfo)
-        .filter(ExtractedPaymentInfo.id == id)
-        .first()
+    result = await db.execute(
+        select(ExtractedPaymentInfo).where(ExtractedPaymentInfo.id == id)
     )
+    record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -248,7 +251,7 @@ async def approve_extracted_data(
         details={"old_status": old_status, "new_status": "approved"},
     )
     db.add(audit_entry)
-    db.commit()
+    await db.commit()
 
     return {"status": "approved"}
 
@@ -257,7 +260,7 @@ async def approve_extracted_data(
 async def reject_extracted_data(
     id: int,
     body: RejectRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     api_key: str = Depends(verify_api_key),
     current_user = Depends(get_current_user_or_api_key),
 ):
@@ -266,11 +269,10 @@ async def reject_extracted_data(
 
     Requires a valid X-API-Key header.
     """
-    record = (
-        db.query(ExtractedPaymentInfo)
-        .filter(ExtractedPaymentInfo.id == id)
-        .first()
+    result = await db.execute(
+        select(ExtractedPaymentInfo).where(ExtractedPaymentInfo.id == id)
     )
+    record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -294,7 +296,7 @@ async def reject_extracted_data(
         },
     )
     db.add(audit_entry)
-    db.commit()
+    await db.commit()
 
     return {"status": "rejected"}
 
@@ -319,7 +321,7 @@ async def get_price_history(
     product_id: str,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -328,17 +330,19 @@ async def get_price_history(
     Supports optional date range filtering via start_date / end_date
     query parameters.
     """
-    query = db.query(PriceHistory).filter(
+    stmt = select(PriceHistory).where(
         PriceHistory.site_id == site_id,
         PriceHistory.product_identifier == product_id,
     )
 
     if start_date:
-        query = query.filter(PriceHistory.recorded_at >= start_date)
+        stmt = stmt.where(PriceHistory.recorded_at >= start_date)
     if end_date:
-        query = query.filter(PriceHistory.recorded_at <= end_date)
+        stmt = stmt.where(PriceHistory.recorded_at <= end_date)
 
-    records = query.order_by(PriceHistory.recorded_at.asc()).all()
+    stmt = stmt.order_by(PriceHistory.recorded_at.asc())
+    result = await db.execute(stmt)
+    records = result.scalars().all()
 
     return PriceHistoryListResponse(
         items=[

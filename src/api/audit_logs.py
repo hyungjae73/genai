@@ -6,10 +6,11 @@ can display change history for any entity.
 """
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import AuditLog
 
 router = APIRouter()
@@ -19,7 +20,7 @@ router = APIRouter()
 async def get_audit_logs(
     entity_type: str,
     entity_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
@@ -27,16 +28,16 @@ async def get_audit_logs(
 
     Returns change history ordered by most recent first (max 100).
     """
-    logs = (
-        db.query(AuditLog)
-        .filter(
+    result = await db.execute(
+        select(AuditLog)
+        .where(
             AuditLog.resource_type == entity_type,
             AuditLog.resource_id == entity_id,
         )
         .order_by(AuditLog.timestamp.desc())
         .limit(100)
-        .all()
     )
+    logs = result.scalars().all()
     return [
         {
             "id": log.id,

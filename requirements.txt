@@ -34,6 +34,15 @@ bcrypt==4.1.2
 passlib[bcrypt]==1.7.4
 email-validator==2.1.0
 
+# OpenTelemetry
+opentelemetry-api==1.22.0
+opentelemetry-sdk==1.22.0
+opentelemetry-exporter-otlp-proto-grpc==1.22.0
+opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-instrumentation-sqlalchemy==0.43b0
+opentelemetry-instrumentation-httpx==0.43b0
+opentelemetry-instrumentation-celery==0.43b0
+
 # Utilities
 python-dotenv==1.0.0
 jinja2==3.1.2

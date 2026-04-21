@@ -6,8 +6,8 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     CrawlJobResponse,
@@ -15,7 +15,7 @@ from src.api.schemas import (
     CrawlResultResponse,
     ManualExtractionInput,
 )
-from src.database import get_db
+from src.database import get_async_db
 from src.auth.dependencies import get_current_user_or_api_key
 from src.models import MonitoringSite, CrawlResult, CrawlJob, ContractCondition, ExtractedPaymentInfo, AuditLog
 from src.auth import verify_api_key
@@ -28,14 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/site/{site_id}", response_model=CrawlJobResponse, status_code=status.HTTP_202_ACCEPTED)
-async def start_crawl(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def start_crawl(site_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Start a crawl job for the specified site using Celery.
 
     Returns 404 if the site does not exist.
     Returns 409 if a crawl is already running for this site.
     """
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -43,14 +44,13 @@ async def start_crawl(site_id: int, db: Session = Depends(get_db), current_user 
         )
 
     # Check for already-running crawl on this site (in DB)
-    running_job = (
-        db.query(CrawlJob)
-        .filter(
+    result = await db.execute(
+        select(CrawlJob).where(
             CrawlJob.site_id == site_id,
             CrawlJob.status.in_(["pending", "running"]),
         )
-        .first()
     )
+    running_job = result.scalar_one_or_none()
     if running_job:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -58,11 +58,13 @@ async def start_crawl(site_id: int, db: Session = Depends(get_db), current_user 
         )
 
     # Get contract conditions for validation
-    contract = (
-        db.query(ContractCondition)
-        .filter(ContractCondition.site_id == site_id, ContractCondition.is_current == True)
-        .first()
+    result = await db.execute(
+        select(ContractCondition).where(
+            ContractCondition.site_id == site_id,
+            ContractCondition.is_current == True,
+        )
     )
+    contract = result.scalar_one_or_none()
 
     contract_conditions = {}
     if contract:
@@ -83,7 +85,7 @@ async def start_crawl(site_id: int, db: Session = Depends(get_db), current_user 
     # Create CrawlJob record in DB
     crawl_job = CrawlJob(site_id=site_id, status="pending")
     db.add(crawl_job)
-    db.flush()
+    await db.flush()
 
     # Start Celery task, passing crawl_job.id
     task = celery_app.send_task(
@@ -94,17 +96,18 @@ async def start_crawl(site_id: int, db: Session = Depends(get_db), current_user 
 
     # Store celery task id
     crawl_job.celery_task_id = task.id
-    db.flush()
+    await db.commit()
 
     return CrawlJobResponse(job_id=str(crawl_job.id), status="pending")
 
 
 @router.get("/status/{job_id}", response_model=CrawlStatusResponse)
-async def get_crawl_status(job_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_crawl_status(job_id: str, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get the status of a crawl job from DB.
     """
-    crawl_job = db.query(CrawlJob).filter(CrawlJob.id == int(job_id)).first()
+    result = await db.execute(select(CrawlJob).where(CrawlJob.id == int(job_id)))
+    crawl_job = result.scalar_one_or_none()
     if not crawl_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,65 +128,66 @@ async def get_crawl_status(job_id: str, db: Session = Depends(get_db), current_u
 
 
 @router.get("/results/{site_id}", response_model=List[CrawlResultResponse])
-async def get_crawl_results(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_crawl_results(site_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get crawl result history for a site, ordered by crawled_at descending.
     """
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="サイトが見つかりません",
         )
 
-    results = (
-        db.query(CrawlResult)
-        .filter(CrawlResult.site_id == site_id)
+    result = await db.execute(
+        select(CrawlResult)
+        .where(CrawlResult.site_id == site_id)
         .order_by(desc(CrawlResult.crawled_at))
-        .all()
     )
-
-    return results
+    return result.scalars().all()
 
 
 @router.get("/results/{site_id}/latest", response_model=CrawlResultResponse)
-async def get_latest_crawl_result(site_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_latest_crawl_result(site_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get the most recent crawl result for a site.
     """
-    site = db.query(MonitoringSite).filter(MonitoringSite.id == site_id).first()
+    result = await db.execute(select(MonitoringSite).where(MonitoringSite.id == site_id))
+    site = result.scalar_one_or_none()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="サイトが見つかりません",
         )
 
-    result = (
-        db.query(CrawlResult)
-        .filter(CrawlResult.site_id == site_id)
+    result = await db.execute(
+        select(CrawlResult)
+        .where(CrawlResult.site_id == site_id)
         .order_by(desc(CrawlResult.crawled_at))
-        .first()
+        .limit(1)
     )
-    if not result:
+    cr = result.scalar_one_or_none()
+    if not cr:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="クロール結果が見つかりません",
         )
 
-    return result
+    return cr
 
 
 @router.get("/extracted/{crawl_result_id}/compare")
-async def get_extracted_data_comparison(crawl_result_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_extracted_data_comparison(crawl_result_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get both HTML and OCR extracted data for a crawl result, for side-by-side comparison.
     """
-    records = (
-        db.query(ExtractedPaymentInfo)
-        .filter(ExtractedPaymentInfo.crawl_result_id == crawl_result_id)
+    result = await db.execute(
+        select(ExtractedPaymentInfo)
+        .where(ExtractedPaymentInfo.crawl_result_id == crawl_result_id)
         .order_by(ExtractedPaymentInfo.extracted_at.desc())
-        .all()
     )
+    records = result.scalars().all()
 
     html_record = next((r for r in records if r.source == "html"), None)
     ocr_record = next((r for r in records if r.source == "ocr"), None)
@@ -216,11 +220,6 @@ async def get_extracted_data_comparison(crawl_result_id: int, db: Session = Depe
 def _determine_extraction_status(records: list) -> str:
     """
     Determine the extraction status based on extracted records.
-
-    Returns:
-        "no_data"  - No records exist, or all records have null/empty key fields
-        "partial"  - Some key fields populated but not all in any single record
-        "complete" - At least one record has both product_name and price populated
     """
     if not records:
         return "no_data"
@@ -270,27 +269,24 @@ def _determine_extraction_status(records: list) -> str:
 
 
 @router.get("/extracted/{crawl_result_id}/visual-confirmation")
-async def get_visual_confirmation_data(crawl_result_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_visual_confirmation_data(crawl_result_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Get visual confirmation data for a crawl result.
-
-    Returns screenshot URL, raw HTML, extraction status, and extracted data
-    for both HTML and OCR sources. Used when extraction fails or is partial
-    to allow manual visual inspection.
     """
-    crawl_result = db.query(CrawlResult).filter(CrawlResult.id == crawl_result_id).first()
+    result = await db.execute(select(CrawlResult).where(CrawlResult.id == crawl_result_id))
+    crawl_result = result.scalar_one_or_none()
     if not crawl_result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="クロール結果が見つかりません",
         )
 
-    records = (
-        db.query(ExtractedPaymentInfo)
-        .filter(ExtractedPaymentInfo.crawl_result_id == crawl_result_id)
+    result = await db.execute(
+        select(ExtractedPaymentInfo)
+        .where(ExtractedPaymentInfo.crawl_result_id == crawl_result_id)
         .order_by(ExtractedPaymentInfo.extracted_at.desc())
-        .all()
     )
+    records = result.scalars().all()
 
     html_record = next((r for r in records if r.source == "html"), None)
     ocr_record = next((r for r in records if r.source == "ocr"), None)
@@ -332,17 +328,15 @@ async def get_visual_confirmation_data(crawl_result_id: int, db: Session = Depen
 async def save_manual_extraction(
     crawl_result_id: int,
     manual_data: ManualExtractionInput,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     api_key: str = Depends(verify_api_key),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """
     Save manually entered extraction data after visual confirmation.
-
-    Creates an ExtractedPaymentInfo record with source="manual" and
-    confidence_score=1.0. Records the action in the audit log.
     """
-    crawl_result = db.query(CrawlResult).filter(CrawlResult.id == crawl_result_id).first()
+    result = await db.execute(select(CrawlResult).where(CrawlResult.id == crawl_result_id))
+    crawl_result = result.scalar_one_or_none()
     if not crawl_result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -397,7 +391,7 @@ async def save_manual_extraction(
         status="approved",
     )
     db.add(record)
-    db.flush()
+    await db.flush()
 
     # Audit log
     audit_entry = AuditLog(
@@ -412,8 +406,8 @@ async def save_manual_extraction(
         },
     )
     db.add(audit_entry)
-    db.commit()
-    db.refresh(record)
+    await db.commit()
+    await db.refresh(record)
 
     logger.info(
         "Manual extraction saved: record_id=%d, crawl_result_id=%d, site_id=%d",
@@ -438,4 +432,3 @@ async def save_manual_extraction(
         "language": record.language,
         "extracted_at": record.extracted_at,
     }
-

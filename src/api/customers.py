@@ -5,7 +5,8 @@ API endpoints for customer management.
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     CustomerCreate,
@@ -13,17 +14,18 @@ from src.api.schemas import (
     CustomerResponse
 )
 from src.auth.dependencies import get_current_user_or_api_key
-from src.database import get_db
+from src.database import get_async_db
 from src.models import Customer
 
 router = APIRouter()
 
 
 @router.post("/", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
-async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def create_customer(customer: CustomerCreate, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Create a new customer."""
     # Check if email already exists
-    existing = db.query(Customer).filter(Customer.email == customer.email).first()
+    result = await db.execute(select(Customer).where(Customer.email == customer.email))
+    existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -40,8 +42,8 @@ async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db
     )
     
     db.add(db_customer)
-    db.commit()
-    db.refresh(db_customer)
+    await db.commit()
+    await db.refresh(db_customer)
     
     return db_customer
 
@@ -49,23 +51,28 @@ async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db
 @router.get("/", response_model=List[CustomerResponse])
 async def get_customers(
     active_only: bool = False,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """Get all customers."""
-    query = db.query(Customer)
-    
     if active_only:
-        query = query.filter(Customer.is_active == True)
+        result = await db.execute(
+            select(Customer).where(Customer.is_active == True).order_by(Customer.created_at.desc())
+        )
+    else:
+        result = await db.execute(
+            select(Customer).order_by(Customer.created_at.desc())
+        )
     
-    customers = query.order_by(Customer.created_at.desc()).all()
+    customers = result.scalars().all()
     return customers
 
 
 @router.get("/{customer_id}", response_model=CustomerResponse)
-async def get_customer(customer_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def get_customer(customer_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """Get a specific customer."""
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    result = await db.execute(select(Customer).where(Customer.id == customer_id))
+    customer = result.scalar_one_or_none()
     
     if not customer:
         raise HTTPException(
@@ -80,11 +87,12 @@ async def get_customer(customer_id: int, db: Session = Depends(get_db), current_
 async def update_customer(
     customer_id: int,
     customer_update: CustomerUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user = Depends(get_current_user_or_api_key),
 ):
     """Update a customer."""
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    result = await db.execute(select(Customer).where(Customer.id == customer_id))
+    customer = result.scalar_one_or_none()
     
     if not customer:
         raise HTTPException(
@@ -96,10 +104,13 @@ async def update_customer(
     
     # Check email uniqueness if email is being updated
     if 'email' in update_data and update_data['email'] != customer.email:
-        existing = db.query(Customer).filter(
-            Customer.email == update_data['email'],
-            Customer.id != customer_id
-        ).first()
+        email_result = await db.execute(
+            select(Customer).where(
+                Customer.email == update_data['email'],
+                Customer.id != customer_id
+            )
+        )
+        existing = email_result.scalar_one_or_none()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -109,20 +120,21 @@ async def update_customer(
     for field, value in update_data.items():
         setattr(customer, field, value)
     
-    db.commit()
-    db.refresh(customer)
+    await db.commit()
+    await db.refresh(customer)
     
     return customer
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_customer(customer_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_or_api_key)):
+async def delete_customer(customer_id: int, db: AsyncSession = Depends(get_async_db), current_user = Depends(get_current_user_or_api_key)):
     """
     Delete a customer.
     
     Note: This is a soft delete. The customer is marked as inactive.
     """
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    result = await db.execute(select(Customer).where(Customer.id == customer_id))
+    customer = result.scalar_one_or_none()
     
     if not customer:
         raise HTTPException(
@@ -131,6 +143,6 @@ async def delete_customer(customer_id: int, db: Session = Depends(get_db), curre
         )
     
     customer.is_active = False
-    db.commit()
+    await db.commit()
     
     return None

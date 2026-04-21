@@ -7,7 +7,7 @@ Reviews API — 手動審査ワークフローのエンドポイント
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import (
     AlertDetailInReview,
@@ -25,7 +25,7 @@ from src.api.schemas import (
 )
 from src.auth.dependencies import require_role
 from src.auth.rbac import Role
-from src.database import get_db
+from src.database import get_async_db
 from src.models import User
 from src.review.service import ReviewService
 
@@ -37,19 +37,19 @@ router = APIRouter()
 # ------------------------------------------------------------------ #
 
 @router.get("/", response_model=PaginatedReviewResponse)
-def list_reviews(
+async def list_reviews(
     status: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
     review_type: Optional[str] = Query(None),
     assigned_to: Optional[int] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.REVIEWER, Role.ADMIN)),
 ) -> PaginatedReviewResponse:
     """審査キュー一覧を取得する。reviewer/admin のみ。"""
     svc = ReviewService(db)
-    items, total = svc.list_reviews(
+    items, total = await svc.list_reviews(
         status=status,
         priority=priority,
         review_type=review_type,
@@ -70,13 +70,13 @@ def list_reviews(
 # ------------------------------------------------------------------ #
 
 @router.get("/stats", response_model=ReviewStatsResponse)
-def get_review_stats(
-    db: Session = Depends(get_db),
+async def get_review_stats(
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.VIEWER, Role.REVIEWER, Role.ADMIN)),
 ) -> ReviewStatsResponse:
     """審査統計を取得する。viewer/reviewer/admin。"""
     svc = ReviewService(db)
-    stats = svc.get_stats()
+    stats = await svc.get_stats()
     return ReviewStatsResponse(**stats)
 
 
@@ -85,15 +85,15 @@ def get_review_stats(
 # ------------------------------------------------------------------ #
 
 @router.get("/escalated", response_model=PaginatedReviewResponse)
-def list_escalated_reviews(
+async def list_escalated_reviews(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ) -> PaginatedReviewResponse:
     """エスカレーション案件一覧を取得する。admin のみ。"""
     svc = ReviewService(db)
-    items, total = svc.get_escalated_reviews(limit=limit, offset=offset)
+    items, total = await svc.get_escalated_reviews(limit=limit, offset=offset)
     return PaginatedReviewResponse(
         items=[ReviewItemResponse.model_validate(i) for i in items],
         total=total,
@@ -107,14 +107,14 @@ def list_escalated_reviews(
 # ------------------------------------------------------------------ #
 
 @router.get("/{review_id}", response_model=ReviewDetailResponse)
-def get_review_detail(
+async def get_review_detail(
     review_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.REVIEWER, Role.ADMIN)),
 ) -> ReviewDetailResponse:
     """審査案件詳細を取得する。reviewer/admin のみ。"""
     svc = ReviewService(db)
-    detail = svc.get_review_detail(review_id)
+    detail = await svc.get_review_detail(review_id)
 
     item = detail["review_item"]
     alert = detail["alert"]
@@ -180,15 +180,15 @@ def get_review_detail(
 # ------------------------------------------------------------------ #
 
 @router.post("/{review_id}/assign", response_model=ReviewItemResponse)
-def assign_reviewer(
+async def assign_reviewer(
     review_id: int,
     body: AssignReviewerRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.REVIEWER, Role.ADMIN)),
 ) -> ReviewItemResponse:
     """担当者を割り当てる。reviewer/admin のみ。"""
     svc = ReviewService(db)
-    item = svc.assign_reviewer(
+    item = await svc.assign_reviewer(
         review_item_id=review_id,
         reviewer_id=body.reviewer_id,
         username=current_user.username,
@@ -201,15 +201,15 @@ def assign_reviewer(
 # ------------------------------------------------------------------ #
 
 @router.post("/{review_id}/decide", response_model=ReviewDecisionResponse)
-def decide_primary(
+async def decide_primary(
     review_id: int,
     body: ReviewDecisionRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.REVIEWER, Role.ADMIN)),
 ) -> ReviewDecisionResponse:
     """一次審査判定を実行する。reviewer/admin のみ。"""
     svc = ReviewService(db)
-    record = svc.decide_primary(
+    record = await svc.decide_primary(
         review_item_id=review_id,
         decision=body.decision,
         comment=body.comment,
@@ -224,15 +224,15 @@ def decide_primary(
 # ------------------------------------------------------------------ #
 
 @router.post("/{review_id}/final-decide", response_model=ReviewDecisionResponse)
-def decide_secondary(
+async def decide_secondary(
     review_id: int,
     body: ReviewDecisionRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ) -> ReviewDecisionResponse:
     """二次審査判定を実行する。admin のみ。"""
     svc = ReviewService(db)
-    record = svc.decide_secondary(
+    record = await svc.decide_secondary(
         review_item_id=review_id,
         decision=body.decision,
         comment=body.comment,
@@ -247,12 +247,12 @@ def decide_secondary(
 # ------------------------------------------------------------------ #
 
 @router.get("/{review_id}/decisions", response_model=list[ReviewDecisionResponse])
-def get_decisions(
+async def get_decisions(
     review_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role(Role.REVIEWER, Role.ADMIN)),
 ) -> list[ReviewDecisionResponse]:
     """判定履歴を取得する。reviewer/admin のみ。"""
     svc = ReviewService(db)
-    decisions = svc.get_decisions(review_id)
+    decisions = await svc.get_decisions(review_id)
     return [ReviewDecisionResponse.model_validate(d) for d in decisions]

@@ -124,22 +124,29 @@ def _on_worker_init(sender=None, **kwargs):
             "Non-crawl worker (queues=%s): skipping BrowserPool initialization",
             queues,
         )
-        return
+    else:
+        logger.info("Crawl worker detected (queues=%s): initializing BrowserPool", queues)
 
-    logger.info("Crawl worker detected (queues=%s): initializing BrowserPool", queues)
+        try:
+            import asyncio
+            from src.pipeline.browser_pool import BrowserPool
 
+            max_instances = int(os.getenv('BROWSER_POOL_SIZE', '3'))
+            pool = BrowserPool(max_instances=max_instances)
+
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(pool.initialize())
+
+            _browser_pool = pool
+            logger.info("BrowserPool initialized with %d instances", max_instances)
+        except Exception as e:
+            logger.error("Failed to initialize BrowserPool: %s", e)
+            _browser_pool = None
+
+    # OpenTelemetry Celery instrumentation (all workers)
     try:
-        import asyncio
-        from src.pipeline.browser_pool import BrowserPool
-
-        max_instances = int(os.getenv('BROWSER_POOL_SIZE', '3'))
-        pool = BrowserPool(max_instances=max_instances)
-
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(pool.initialize())
-
-        _browser_pool = pool
-        logger.info("BrowserPool initialized with %d instances", max_instances)
+        from src.core.telemetry import instrument_celery
+        otel_service = os.getenv("OTEL_SERVICE_NAME", "payment-compliance-worker")
+        instrument_celery(otel_service)
     except Exception as e:
-        logger.error("Failed to initialize BrowserPool: %s", e)
-        _browser_pool = None
+        logger.warning("Failed to instrument Celery with OpenTelemetry: %s", e)

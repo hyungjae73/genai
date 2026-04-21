@@ -1,0 +1,17 @@
+{
+  "name": "DB Migration Reminder",
+  "version": "2",
+  "description": "When any model file is edited, reminds the agent to check if an Alembic migration is needed.",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/src/models.py",
+      "**/src/rules/models.py",
+      "**/src/auth/schemas.py"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A model or schema file was just edited. Check if the changes affect the database schema (new columns, removed columns, type changes, new tables). If so:\n1. Create an Alembic migration file in genai/alembic/versions/ with correct down_revision\n2. Run 'alembic upgrade head' inside the Docker container: docker compose exec api alembic upgrade head\n3. Update .kiro/specs/spec-dependencies.md with the new migration\nIf the change is schema-only (Pydantic, no DB impact), verify field names and types match the SQLAlchemy model. Do NOT skip this step."
+  }
+}

@@ -43,6 +43,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OTEL_SERVICE_NAME=payment-compliance-api
     env_file:
       - .env
     volumes:
@@ -73,6 +74,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OTEL_SERVICE_NAME=payment-compliance-celery-worker
     env_file:
       - .env
     volumes:
@@ -103,6 +105,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OTEL_SERVICE_NAME=payment-compliance-celery-beat
     env_file:
       - .env
     healthcheck:
@@ -164,7 +167,7 @@ services:
   crawl-worker:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.crawl
     container_name: payment-monitor-crawl-worker
     command: celery -A src.celery_app worker -Q crawl --loglevel=info --concurrency=2
     environment:
@@ -176,6 +179,7 @@ services:
       - STORAGE_ACCESS_KEY=${STORAGE_ACCESS_KEY:-minioadmin}
       - STORAGE_SECRET_KEY=${STORAGE_SECRET_KEY:-minioadmin}
       - STORAGE_BUCKET=${STORAGE_BUCKET:-crawl-data}
+      - OTEL_SERVICE_NAME=payment-compliance-crawl-worker
     env_file:
       - .env
     volumes:
@@ -199,6 +203,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OTEL_SERVICE_NAME=payment-compliance-extract-worker
     env_file:
       - .env
     depends_on:
@@ -220,6 +225,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OTEL_SERVICE_NAME=payment-compliance-validate-worker
     env_file:
       - .env
     depends_on:
@@ -245,6 +251,7 @@ services:
       - STORAGE_ACCESS_KEY=${STORAGE_ACCESS_KEY:-minioadmin}
       - STORAGE_SECRET_KEY=${STORAGE_SECRET_KEY:-minioadmin}
       - STORAGE_BUCKET=${STORAGE_BUCKET:-crawl-data}
+      - OTEL_SERVICE_NAME=payment-compliance-report-worker
     env_file:
       - .env
     depends_on:
@@ -274,6 +281,7 @@ services:
       - NOTIFICATION_EMAIL_ENABLED=${NOTIFICATION_EMAIL_ENABLED:-true}
       - SMTP_HOST=${SMTP_HOST:-localhost}
       - SMTP_PORT=${SMTP_PORT:-587}
+      - OTEL_SERVICE_NAME=payment-compliance-notification-worker
     env_file:
       - .env
     depends_on:
