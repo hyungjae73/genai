@@ -1,0 +1,48 @@
+.users-page {
+  padding: var(--space-4);
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.user-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.user-card__info {
+  flex: 1;
+  min-width: 200px;
+}
+
+.user-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.user-card__username {
+  font-weight: 600;
+  font-size: var(--font-md);
+}
+
+.user-card__details {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+}
+
+.user-card__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
