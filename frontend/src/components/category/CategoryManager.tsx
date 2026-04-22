@@ -47,8 +47,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange, onC
       if (onCategoryChange) {
         onCategoryChange();
       }
-    } catch (err: any) {
-      if (err.response?.status === 409) {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number } };
+      if (axiosErr.response?.status === 409) {
         setError('同名のカテゴリが既に存在します');
       } else {
         setError('カテゴリの保存に失敗しました');

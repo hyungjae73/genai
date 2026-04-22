@@ -1,30 +1,14 @@
 import React from 'react';
+import { getConfidenceColor, getConfidenceLevel } from './confidenceUtils';
 
-/* ------------------------------------------------------------------ */
-/*  ConfidenceIndicator – reusable confidence score display            */
-/* ------------------------------------------------------------------ */
+// Re-export for backward compatibility
+export { getConfidenceColor, getConfidenceLevel, sortByConfidenceAsc } from './confidenceUtils';
 
 export interface ConfidenceIndicatorProps {
-  /** Confidence score between 0.0 and 1.0 */
   score: number;
-  /** Optional field name label */
   fieldName?: string;
-  /** Compact mode shows only the badge without label */
   compact?: boolean;
 }
-
-/** Color coding: green ≥0.8, yellow 0.5–0.8, red <0.5 */
-export const getConfidenceColor = (score: number): string => {
-  if (score >= 0.8) return 'var(--success-color, #10b981)';
-  if (score >= 0.5) return 'var(--warning-color, #f59e0b)';
-  return 'var(--danger-color, #ef4444)';
-};
-
-export const getConfidenceLevel = (score: number): string => {
-  if (score >= 0.8) return '高';
-  if (score >= 0.5) return '中';
-  return '低';
-};
 
 const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
   score,
@@ -68,18 +52,3 @@ const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
 };
 
 export default ConfidenceIndicator;
-
-/**
- * Utility: sort data fields by confidence score ascending (lowest first).
- * Fields with undefined/null scores are placed first (need most review).
- */
-export function sortByConfidenceAsc<T>(
-  items: T[],
-  getScore: (item: T) => number | undefined | null,
-): T[] {
-  return [...items].sort((a, b) => {
-    const sa = getScore(a) ?? -1;
-    const sb = getScore(b) ?? -1;
-    return sa - sb;
-  });
-}

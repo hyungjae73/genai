@@ -75,6 +75,7 @@ const ScreenshotTab = ({ siteId }: ScreenshotTabProps) => {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchData();
   }, [siteId]);

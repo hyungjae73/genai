@@ -53,6 +53,7 @@ const FieldSchemaManager: React.FC<FieldSchemaManagerProps> = ({ categoryId }) =
     format?: string;
   }>({});
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSchemas();
   }, [categoryId]);
@@ -98,10 +99,11 @@ const FieldSchemaManager: React.FC<FieldSchemaManagerProps> = ({ categoryId }) =
 
       // Reload schemas
       await loadSchemas();
-    } catch (err: any) {
-      if (err.response?.status === 409) {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number } };
+      if (axiosErr.response?.status === 409) {
         setError('同一カテゴリ内に同名のフィールドが既に存在します');
-      } else if (err.response?.status === 422) {
+      } else if (axiosErr.response?.status === 422) {
         setError('サポートされていないフィールド型です');
       } else {
         setError('フィールドスキーマの保存に失敗しました');
@@ -110,25 +112,25 @@ const FieldSchemaManager: React.FC<FieldSchemaManagerProps> = ({ categoryId }) =
     }
   };
 
-  const buildValidationRules = (fieldType: string, rules: any): Record<string, any> => {
-    const result: Record<string, any> = {};
+  const buildValidationRules = (fieldType: string, rules: typeof validationRules): Record<string, string | number | string[]> => {
+    const result: Record<string, string | number | string[]> = {};
     
     switch (fieldType) {
       case 'text':
         if (rules.pattern) result.pattern = rules.pattern;
-        if (rules.max_length) result.max_length = parseInt(rules.max_length);
+        if (rules.max_length) result.max_length = rules.max_length;
         break;
       case 'number':
-        if (rules.min !== undefined && rules.min !== '') result.min = parseFloat(rules.min);
-        if (rules.max !== undefined && rules.max !== '') result.max = parseFloat(rules.max);
+        if (rules.min !== undefined) result.min = rules.min;
+        if (rules.max !== undefined) result.max = rules.max;
         break;
       case 'currency':
-        if (rules.min !== undefined && rules.min !== '') result.min = parseFloat(rules.min);
+        if (rules.min !== undefined) result.min = rules.min;
         if (rules.currency_code) result.currency_code = rules.currency_code;
         break;
       case 'percentage':
-        if (rules.min !== undefined && rules.min !== '') result.min = parseFloat(rules.min);
-        if (rules.max !== undefined && rules.max !== '') result.max = parseFloat(rules.max);
+        if (rules.min !== undefined) result.min = rules.min;
+        if (rules.max !== undefined) result.max = rules.max;
         break;
       case 'date':
         if (rules.format) result.format = rules.format;
@@ -156,17 +158,17 @@ const FieldSchemaManager: React.FC<FieldSchemaManagerProps> = ({ categoryId }) =
     
     // Parse validation rules for form
     if (schema.validation_rules) {
-      const rules: any = {};
-      const vr = schema.validation_rules;
+      const rules: typeof validationRules = {};
+      const vr = schema.validation_rules as Record<string, unknown>;
       
-      if (vr.min !== undefined) rules.min = vr.min;
-      if (vr.max !== undefined) rules.max = vr.max;
-      if (vr.pattern) rules.pattern = vr.pattern;
-      if (vr.max_length) rules.max_length = vr.max_length;
-      if (vr.currency_code) rules.currency_code = vr.currency_code;
-      if (vr.format) rules.format = vr.format;
+      if (vr.min !== undefined) rules.min = Number(vr.min);
+      if (vr.max !== undefined) rules.max = Number(vr.max);
+      if (vr.pattern) rules.pattern = String(vr.pattern);
+      if (vr.max_length) rules.max_length = Number(vr.max_length);
+      if (vr.currency_code) rules.currency_code = String(vr.currency_code);
+      if (vr.format) rules.format = String(vr.format);
       if (vr.options && Array.isArray(vr.options)) {
-        rules.options = vr.options.join(', ');
+        rules.options = (vr.options as string[]).join(', ');
       }
       
       setValidationRules(rules);
