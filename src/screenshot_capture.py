@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, Page
+from playwright.async_api import TimeoutError as PlaywrightTimeout
+
+from src.core.retry import with_retry
 
 
 class ScreenshotCapture:
@@ -52,7 +55,7 @@ class ScreenshotCapture:
         wait_time: int = 2000
     ) -> Path:
         """
-        Capture a screenshot of a web page.
+        Capture a screenshot of a web page with retry on Playwright timeouts.
         
         Args:
             url: URL to capture
@@ -67,46 +70,50 @@ class ScreenshotCapture:
         """
         if not self.browser:
             raise RuntimeError("Browser not initialized. Use context manager.")
-        
-        # Generate filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        ext = "png" if file_format == "png" else "pdf"
-        filename = f"site_{site_id}_{screenshot_type}_{timestamp}.{ext}"
-        file_path = self.screenshot_dir / filename
-        
-        # Create new page with stealth
-        context = await self._stealth_factory.create_context(self.browser)
-        page: Page = await context.new_page()
-        await self._stealth_factory.apply_stealth(page)
-        
-        try:
-            # Jitter before navigation
-            await self._stealth_factory.jitter()
 
-            # Navigate to URL
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            
-            # Wait for additional time to ensure page is fully loaded
-            await asyncio.sleep(wait_time / 1000)
-            
-            # Capture screenshot
-            if file_format == "png":
-                await page.screenshot(
-                    path=str(file_path),
-                    full_page=full_page
-                )
-            else:  # PDF
-                await page.pdf(
-                    path=str(file_path),
-                    format="A4",
-                    print_background=True
-                )
-            
-            return file_path
-        
-        finally:
-            await page.close()
-            await context.close()
+        @with_retry(retry_on=(PlaywrightTimeout,), max_attempts=3)
+        async def _do_capture() -> Path:
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ext = "png" if file_format == "png" else "pdf"
+            filename = f"site_{site_id}_{screenshot_type}_{timestamp}.{ext}"
+            file_path = self.screenshot_dir / filename
+
+            # Create new page with stealth
+            context = await self._stealth_factory.create_context(self.browser)
+            page: Page = await context.new_page()
+            await self._stealth_factory.apply_stealth(page)
+
+            try:
+                # Jitter before navigation
+                await self._stealth_factory.jitter()
+
+                # Navigate to URL
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+                # Wait for additional time to ensure page is fully loaded
+                await asyncio.sleep(wait_time / 1000)
+
+                # Capture screenshot
+                if file_format == "png":
+                    await page.screenshot(
+                        path=str(file_path),
+                        full_page=full_page
+                    )
+                else:  # PDF
+                    await page.pdf(
+                        path=str(file_path),
+                        format="A4",
+                        print_background=True
+                    )
+
+                return file_path
+
+            finally:
+                await page.close()
+                await context.close()
+
+        return await _do_capture()
     
     async def capture_multiple_screenshots(
         self,

@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';
-import { fetchReviewStats } from '../services/api';
-import type { ReviewStats } from '../types/review';
+import { useReviewStats } from '../hooks/queries/useReviews';
 import './ReviewDashboard.css';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -27,25 +26,8 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const ReviewDashboard: React.FC = () => {
-  const [stats, setStats] = useState<ReviewStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchReviewStats();
-        setStats(data);
-      } catch {
-        setError('統計情報の取得に失敗しました');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  const { data: stats, isLoading: loading, error: queryError } = useReviewStats();
+  const error = queryError ? '統計情報の取得に失敗しました' : null;
 
   if (loading) return <div className="review-dashboard-loading" aria-live="polite">読み込み中...</div>;
   if (error) return <div className="review-dashboard-error" role="alert">{error}</div>;

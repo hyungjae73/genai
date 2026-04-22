@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { getAlerts, type Alert } from '../services/api';
-import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useMemo } from 'react';
+import type { Alert } from '../services/api';
+import { useAlerts } from '../hooks/queries/useAlerts';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Table, type TableColumn } from '../components/ui/Table/Table';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
@@ -53,30 +53,9 @@ const columns: TableColumn<AlertRecord>[] = [
 ];
 
 const FakeSites = () => {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchFakeSiteAlerts = async () => {
-    try {
-      setLoading(true);
-      const data = await getAlerts();
-      setAlerts(data.filter(a => a.alert_type === 'fake_site'));
-      setError(null);
-    } catch (err) {
-      setError('偽サイトアラートの取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchFakeSiteAlerts();
-  }, []);
-
-  // Auto-refresh every 30 seconds
-  useAutoRefresh(fetchFakeSiteAlerts, 30000);
+  const { data: allAlerts = [], isLoading: loading, error: queryError } = useAlerts();
+  const error = queryError ? '偽サイトアラートの取得に失敗しました' : null;
+  const alerts = useMemo(() => allAlerts.filter(a => a.alert_type === 'fake_site'), [allAlerts]);
 
   if (loading) {
     return <div className="loading">読み込み中...</div>;

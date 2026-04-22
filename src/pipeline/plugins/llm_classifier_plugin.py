@@ -18,6 +18,9 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import httpx
+
+from src.core.retry import with_retry
 from src.pipeline.context import CrawlContext
 from src.pipeline.plugin import CrawlPlugin
 from src.pipeline.plugins.dark_pattern_utils import (
@@ -66,6 +69,17 @@ _PROMPT_TEMPLATE = """\
 - dark_pattern_type: 検出されたダークパターンの種類。以下のいずれか:
   "hidden_subscription"（隠れた定期購入）または "misleading_font_size"（小フォント重要文言）
 """
+
+
+def _is_retryable_llm_error(exc: Exception) -> bool:
+    """Determine if an LLM API error is retryable.
+
+    Only retry on HTTP 429 (rate limit) and 5xx (server errors).
+    Do NOT retry on 4xx client errors (400, 401, 403, 404).
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return False
 
 
 class LLMClassifierPlugin(CrawlPlugin):
@@ -152,23 +166,19 @@ class LLMClassifierPlugin(CrawlPlugin):
         """Call LLM with exponential backoff retry (tenacity, 3 retries).
 
         🚨 CTO Override: tenacity exponential backoff 3 retries.
+        Only retries on HTTP 429 (rate limit) and 5xx (server errors).
+        Does NOT retry on 4xx client errors (400, 401, 403, 404).
         """
         try:
-            from tenacity import retry, stop_after_attempt, wait_exponential
-
-            @retry(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=1, max=10),
-                reraise=True,
+            @with_retry(
+                retry_on=(httpx.HTTPStatusError,),
+                retry_if=_is_retryable_llm_error,
+                max_attempts=3,
             )
             async def _call():
                 return await self._call_llm(text, screenshots)
 
             return await _call()
-        except ImportError:
-            # tenacity not available — call directly
-            logger.warning("tenacity not available, calling LLM without retry")
-            return await self._call_llm(text, screenshots)
         except Exception as exc:
             error_msg = f"LLMClassifierPlugin: LLM call failed after retries: {exc}"
             logger.error(error_msg)

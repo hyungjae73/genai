@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { getAlerts, type Alert } from '../services/api';
-import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useState } from 'react';
+import type { Alert } from '../services/api';
+import { useAlerts } from '../hooks/queries/useAlerts';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Select } from '../components/ui/Select/Select';
@@ -29,32 +29,10 @@ const alertTypeFilterOptions = [
 ];
 
 const Alerts = () => {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: alerts = [], isLoading: loading, error: queryError } = useAlerts();
+  const error = queryError ? 'アラート一覧の取得に失敗しました' : null;
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [alertTypeFilter, setAlertTypeFilter] = useState<string>('all');
-
-  const fetchAlerts = async () => {
-    try {
-      setLoading(true);
-      const data = await getAlerts();
-      setAlerts(data);
-      setError(null);
-    } catch (err) {
-      setError('アラート一覧の取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAlerts();
-  }, []);
-
-  // Auto-refresh every 30 seconds
-  useAutoRefresh(fetchAlerts, 30000);
 
   const filteredAlerts = alerts.filter(alert => {
     const matchesSeverity = severityFilter === 'all' || alert.severity === severityFilter;

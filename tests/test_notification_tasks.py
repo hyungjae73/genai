@@ -10,7 +10,7 @@ Requirements: 2.4, 2.5, 3.5, 3.6, 6.3, 8.1, 8.2, 8.3, 8.4
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,43 +23,50 @@ from src.notification_tasks import _send_slack, _send_email, _record_notificatio
 
 
 class TestSendSlackRetries:
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.httpx.post")
-    def test_returns_true_on_first_success(self, mock_post, mock_sleep):
+    def test_returns_true_on_first_success(self, mock_post):
         resp = MagicMock()
         resp.status_code = 200
+        resp.raise_for_status = MagicMock()
         mock_post.return_value = resp
 
         result = _send_slack("https://hooks.slack.com/test", {"text": "hi"})
 
         assert result is True
         mock_post.assert_called_once()
-        mock_sleep.assert_not_called()
 
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.httpx.post")
-    def test_retries_on_non_200_then_succeeds(self, mock_post, mock_sleep):
+    def test_retries_on_5xx_then_succeeds(self, mock_post):
+        import httpx
+
         fail_resp = MagicMock()
         fail_resp.status_code = 500
+        fail_resp.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "Server Error",
+                request=httpx.Request("POST", "https://hooks.slack.com/test"),
+                response=MagicMock(status_code=500),
+            )
+        )
         ok_resp = MagicMock()
         ok_resp.status_code = 200
+        ok_resp.raise_for_status = MagicMock()
         mock_post.side_effect = [fail_resp, ok_resp]
 
         result = _send_slack("https://hooks.slack.com/test", {"text": "hi"})
 
         assert result is True
         assert mock_post.call_count == 2
-        mock_sleep.assert_called_once_with(1)  # 2**0 = 1
 
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.httpx.post")
-    def test_retries_on_http_error_then_succeeds(self, mock_post, mock_sleep):
-        import httpx
+    def test_retries_on_connection_error_then_succeeds(self, mock_post):
+        import httpx as _httpx
 
         ok_resp = MagicMock()
         ok_resp.status_code = 200
+        ok_resp.raise_for_status = MagicMock()
         mock_post.side_effect = [
-            httpx.HTTPError("connection error"),
+            OSError("connection error"),
             ok_resp,
         ]
 
@@ -68,33 +75,34 @@ class TestSendSlackRetries:
         assert result is True
         assert mock_post.call_count == 2
 
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.httpx.post")
-    def test_returns_false_after_3_failures(self, mock_post, mock_sleep):
-        import httpx
-
-        mock_post.side_effect = httpx.HTTPError("down")
+    def test_returns_false_after_3_failures(self, mock_post):
+        mock_post.side_effect = OSError("down")
 
         result = _send_slack("https://hooks.slack.com/test", {"text": "hi"})
 
         assert result is False
         assert mock_post.call_count == 3
-        # Exponential backoff: sleep(1), sleep(2) — no sleep after last attempt
-        assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(1)   # 2**0
-        mock_sleep.assert_any_call(2)   # 2**1
 
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.httpx.post")
-    def test_exponential_backoff_timing(self, mock_post, mock_sleep):
-        fail_resp = MagicMock()
-        fail_resp.status_code = 503
-        mock_post.return_value = fail_resp
+    def test_does_not_retry_on_4xx(self, mock_post):
+        import httpx
 
-        _send_slack("https://hooks.slack.com/test", {"text": "hi"})
+        resp_403 = MagicMock()
+        resp_403.status_code = 403
+        resp_403.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "Forbidden",
+                request=httpx.Request("POST", "https://hooks.slack.com/test"),
+                response=MagicMock(status_code=403),
+            )
+        )
+        mock_post.return_value = resp_403
 
-        # 3 attempts, sleep between first two gaps: 2**0=1, 2**1=2
-        assert mock_sleep.call_args_list == [call(1), call(2)]
+        result = _send_slack("https://hooks.slack.com/test", {"text": "hi"})
+
+        assert result is False
+        assert mock_post.call_count == 1
 
 
 # ------------------------------------------------------------------
@@ -103,9 +111,8 @@ class TestSendSlackRetries:
 
 
 class TestSendEmailRetries:
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.smtplib.SMTP")
-    def test_returns_true_on_first_success(self, mock_smtp_cls, mock_sleep):
+    def test_returns_true_on_first_success(self, mock_smtp_cls):
         mock_server = MagicMock()
         mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
         mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -113,15 +120,12 @@ class TestSendEmailRetries:
         result = _send_email(["user@example.com"], "Subject", "Body")
 
         assert result is True
-        mock_sleep.assert_not_called()
 
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.smtplib.SMTP")
-    def test_retries_on_smtp_error_then_succeeds(self, mock_smtp_cls, mock_sleep):
+    def test_retries_on_smtp_error_then_succeeds(self, mock_smtp_cls):
         mock_server = MagicMock()
         # First call raises, second succeeds
         call_count = {"n": 0}
-        original_enter = mock_smtp_cls.return_value.__enter__
 
         def side_effect(*args, **kwargs):
             call_count["n"] += 1
@@ -135,11 +139,9 @@ class TestSendEmailRetries:
         result = _send_email(["user@example.com"], "Subject", "Body")
 
         assert result is True
-        mock_sleep.assert_called_once_with(1)  # 2**0
 
-    @patch("src.notification_tasks.time.sleep")
     @patch("src.notification_tasks.smtplib.SMTP")
-    def test_returns_false_after_3_failures(self, mock_smtp_cls, mock_sleep):
+    def test_returns_false_after_3_failures(self, mock_smtp_cls):
         mock_smtp_cls.return_value.__enter__ = MagicMock(
             side_effect=ConnectionRefusedError("SMTP down")
         )
@@ -148,9 +150,6 @@ class TestSendEmailRetries:
         result = _send_email(["user@example.com"], "Subject", "Body")
 
         assert result is False
-        assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(1)
-        mock_sleep.assert_any_call(2)
 
 
 # ------------------------------------------------------------------

@@ -25,6 +25,7 @@ from typing import Any
 import httpx
 
 from src.celery_app import celery_app
+from src.core.retry import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,11 @@ def send_notification(self, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _send_slack(webhook_url: str, payload: dict) -> bool:
-    """Send Slack webhook POST with up to 3 retries (1s, 2s, 4s exponential backoff).
+    """Send Slack webhook POST with retry on transient errors.
+
+    Uses with_retry for exponential backoff on ConnectionError, OSError,
+    httpx connection/timeout errors, and HTTP 5xx errors.
+    Does NOT retry on 4xx client errors.
 
     Args:
         webhook_url: Slack Incoming Webhook URL
@@ -106,25 +111,41 @@ def _send_slack(webhook_url: str, payload: dict) -> bool:
     Returns:
         True if send succeeded, False otherwise
     """
-    for attempt in range(3):
-        try:
-            resp = httpx.post(webhook_url, json=payload, timeout=10)
-            if resp.status_code == 200:
-                return True
-            logger.warning(
-                "Slack webhook returned %d on attempt %d",
-                resp.status_code,
-                attempt + 1,
-            )
-        except httpx.HTTPError as e:
-            logger.warning("Slack webhook error on attempt %d: %s", attempt + 1, e)
-        if attempt < 2:
-            time.sleep(2**attempt)  # 1s, 2s, 4s
-    return False
+    @with_retry(
+        retry_on=(ConnectionError, OSError, httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError),
+        retry_if=_is_retryable_slack_error,
+        max_attempts=3,
+    )
+    def _do_send():
+        resp = httpx.post(webhook_url, json=payload, timeout=10)
+        resp.raise_for_status()
+        return True
+
+    try:
+        return _do_send()
+    except Exception as e:
+        logger.error("Slack webhook failed after retries: %s", e)
+        return False
+
+
+def _is_retryable_slack_error(exc: Exception) -> bool:
+    """Determine if a Slack webhook error is retryable.
+
+    Retry on connection errors and HTTP 5xx. Not on 4xx.
+    For non-HTTPStatusError exceptions (ConnectionError, OSError, etc.),
+    always retry.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    # For ConnectionError, OSError, ConnectError, TimeoutException — always retry
+    return True
 
 
 def _send_email(recipients: list[str], subject: str, body: str) -> bool:
-    """Send email via SMTP with up to 3 retries (1s, 2s, 4s exponential backoff).
+    """Send email via SMTP with retry on transient errors.
+
+    Uses with_retry for exponential backoff on ConnectionError, OSError,
+    and smtplib exceptions.
 
     Args:
         recipients: List of email addresses
@@ -140,25 +161,29 @@ def _send_email(recipients: list[str], subject: str, body: str) -> bool:
     smtp_password = os.environ.get("SMTP_PASSWORD", "")
     from_addr = os.environ.get("SMTP_FROM", "noreply@payment-monitor.local")
 
-    for attempt in range(3):
-        try:
-            msg = MIMEMultipart()
-            msg["From"] = from_addr
-            msg["To"] = ", ".join(recipients)
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain", "utf-8"))
+    @with_retry(
+        retry_on=(ConnectionError, OSError, smtplib.SMTPException),
+        max_attempts=3,
+    )
+    def _do_send():
+        msg = MIMEMultipart()
+        msg["From"] = from_addr
+        msg["To"] = ", ".join(recipients)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
 
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-                if smtp_user and smtp_password:
-                    server.starttls()
-                    server.login(smtp_user, smtp_password)
-                server.sendmail(from_addr, recipients, msg.as_string())
-            return True
-        except Exception as e:
-            logger.warning("Email send error on attempt %d: %s", attempt + 1, e)
-        if attempt < 2:
-            time.sleep(2**attempt)  # 1s, 2s, 4s
-    return False
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            if smtp_user and smtp_password:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+            server.sendmail(from_addr, recipients, msg.as_string())
+        return True
+
+    try:
+        return _do_send()
+    except Exception as e:
+        logger.error("Email send failed after retries: %s", e)
+        return False
 
 
 def _record_notification_results(

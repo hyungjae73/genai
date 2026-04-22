@@ -1,11 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import {
-  getCategories,
-  createCategory,
-  updateCategory,
-  deleteCategory,
-} from '../../services/api';
+import React, { useState } from 'react';
 import type { Category, CategoryCreate } from '../../services/api';
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '../../hooks/queries/useCategories';
 
 interface CategoryManagerProps {
   onCategoryChange?: () => void;
@@ -14,8 +9,11 @@ interface CategoryManagerProps {
 }
 
 const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange, onCategorySelect, selectedCategoryId }) => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: categories = [], isLoading: loading } = useCategories();
+  const createCategoryMutation = useCreateCategory();
+  const updateCategoryMutation = useUpdateCategory();
+  const deleteCategoryMutation = useDeleteCategory();
+
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -28,24 +26,6 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange, onC
     color: '#3B82F6',
   });
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  const loadCategories = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getCategories();
-      setCategories(data);
-    } catch (err) {
-      setError('カテゴリの読み込みに失敗しました');
-      console.error('Failed to load categories:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -53,20 +33,15 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange, onC
       setError(null);
       
       if (editingId !== null) {
-        // Update existing category
-        await updateCategory(editingId, formData);
+        await updateCategoryMutation.mutateAsync({ id: editingId, data: formData });
       } else {
-        // Create new category
-        await createCategory(formData);
+        await createCategoryMutation.mutateAsync(formData);
       }
 
       // Reset form
       setFormData({ name: '', description: '', color: '#3B82F6' });
       setEditingId(null);
       setShowAddForm(false);
-
-      // Reload categories
-      await loadCategories();
       
       // Notify parent component
       if (onCategoryChange) {
@@ -102,11 +77,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoryChange, onC
   const handleDelete = async (id: number) => {
     try {
       setError(null);
-      await deleteCategory(id);
+      await deleteCategoryMutation.mutateAsync(id);
       setDeleteConfirm(null);
-      
-      // Reload categories
-      await loadCategories();
       
       // Notify parent component
       if (onCategoryChange) {

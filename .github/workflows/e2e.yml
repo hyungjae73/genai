@@ -1,0 +1,44 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start application stack
+        run: docker-compose up -d --wait
+        working-directory: .
+
+      - name: Wait for application to be ready
+        run: |
+          echo "Waiting for application to be ready..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:5173 > /dev/null 2>&1; then
+              echo "Application is ready"
+              break
+            fi
+            echo "Attempt $i/30 - waiting..."
+            sleep 5
+          done
+
+      - name: Run Playwright tests
+        uses: docker://mcr.microsoft.com/playwright:v1.40.0-jammy
+        with:
+          args: bash -c "cd e2e && npm ci && npx playwright test"
+        env:
+          E2E_BASE_URL: http://localhost:5173
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-test-results
+          path: e2e/test-results/
+          retention-days: 7

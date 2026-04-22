@@ -126,3 +126,4 @@
 | 2026-04-21 | [2026-04-21-1800.md](sessions/2026-04-21-1800.md) | design.md フィードバック反映: 自動コミット廃止・Celeryキャッシュ無効化タイミング・E2E Flakiness対策 |
 | 2026-04-21 | [2026-04-21-1900.md](sessions/2026-04-21-1900.md) | tasks.md 作成完了: 3フェーズ20タスク、production-readiness-improvements spec 全3ファイル完成 |
 | 2026-04-22 | [2026-04-22-1000.md](sessions/2026-04-22-1000.md) | production-readiness タスク実行: Phase 1 全完了 + Phase 2 Task 8-10 完了（AsyncSession/OTel/Dockerfile.crawl/TanStack Query） |
+| 2026-04-22 | [2026-04-22-1200.md](sessions/2026-04-22-1200.md) | production-readiness 全20タスク完了: Phase 2 残り（TanStack Query移行/Tenacity/リトライ適用）+ Phase 3（E2Eテスト/RBAC/CI） |

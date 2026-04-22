@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react';
-import {
-  getCustomers,
-  getSites,
-  getCategories,
-  type Customer,
-  type Site,
-  type Category,
-} from '../services/api';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { Customer, Site, Category } from '../services/api';
+import { useSites, siteKeys } from '../hooks/queries/useSites';
+import { useCustomers, customerKeys } from '../hooks/queries/useCustomers';
+import { useCategories } from '../hooks/queries/useCategories';
 import { Input } from '../components/ui/Input/Input';
 import { Select } from '../components/ui/Select/Select';
 import CustomerGroup from '../components/hierarchy/CustomerGroup';
@@ -75,38 +72,21 @@ export function filterCustomers(
 // --- Main component ---
 
 const SiteManagement = () => {
-  const [customers, setCustomers] = useState<CustomerWithSites[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const queryClient = useQueryClient();
+  const { data: customersData = [], isLoading: customersLoading, error: customersError, refetch } = useCustomers();
+  const { data: sitesData = [], isLoading: sitesLoading } = useSites();
+  const { data: categoriesData = [], isLoading: categoriesLoading } = useCategories();
+
+  const loading = customersLoading || sitesLoading || categoriesLoading;
+  const error = customersError ? 'データの取得に失敗しました' : null;
+
+  const customers = groupSitesByCustomer(customersData, sitesData);
+  const categories = categoriesData;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [customersData, sitesData, categoriesData] = await Promise.all([
-        getCustomers(),
-        getSites(),
-        getCategories(),
-      ]);
-      const grouped = groupSitesByCustomer(customersData, sitesData);
-      setCustomers(grouped);
-      setCategories(categoriesData);
-    } catch (err) {
-      setError('データの取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   const filtered = filterCustomers(customers, searchQuery, statusFilter, categoryFilter);
 
@@ -202,7 +182,10 @@ const SiteManagement = () => {
               customer={customer}
               isExpanded={expandedCustomers.has(customer.id)}
               onToggle={() => toggleCustomer(customer.id)}
-              onSiteUpdate={fetchData}
+              onSiteUpdate={() => {
+                queryClient.invalidateQueries({ queryKey: siteKeys.all });
+                queryClient.invalidateQueries({ queryKey: customerKeys.all });
+              }}
             />
           ))
         )}

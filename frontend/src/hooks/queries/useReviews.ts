@@ -42,8 +42,9 @@ export function useAssignReviewer() {
   return useMutation({
     mutationFn: ({ reviewId, body }: { reviewId: number; body: AssignReviewerRequest }) =>
       assignReviewer(reviewId, body),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: reviewKeys.detail(variables.reviewId) });
     },
   });
 }
@@ -53,8 +54,9 @@ export function useDecidePrimary() {
   return useMutation({
     mutationFn: ({ reviewId, body }: { reviewId: number; body: ReviewDecisionRequest }) =>
       decidePrimary(reviewId, body),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: reviewKeys.detail(variables.reviewId) });
       qc.invalidateQueries({ queryKey: reviewKeys.stats });
     },
   });
@@ -65,8 +67,9 @@ export function useDecideSecondary() {
   return useMutation({
     mutationFn: ({ reviewId, body }: { reviewId: number; body: ReviewDecisionRequest }) =>
       decideSecondary(reviewId, body),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: reviewKeys.detail(variables.reviewId) });
       qc.invalidateQueries({ queryKey: reviewKeys.stats });
     },
   });

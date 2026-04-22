@@ -1,7 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getSites, getCustomers, createSite, updateSite, deleteSite, triggerCrawl, getCrawlStatus, getLatestCrawlResult, type Site, type Customer, type CrawlResult } from '../services/api';
-import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useQueryClient } from '@tanstack/react-query';
+import { triggerCrawl, getCrawlStatus, getLatestCrawlResult } from '../services/api';
+import type { Site, CrawlResult } from '../services/api';
+import { useSites, useCreateSite, useUpdateSite, useDeleteSite, siteKeys } from '../hooks/queries/useSites';
+import { useCustomers } from '../hooks/queries/useCustomers';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Button } from '../components/ui/Button/Button';
 import { Table, type TableColumn } from '../components/ui/Table/Table';
@@ -41,10 +44,16 @@ const statusFilterOptions = [
 ];
 
 const Sites = () => {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data: sites = [], isLoading: sitesLoading, error: sitesError } = useSites();
+  const { data: customers = [], isLoading: customersLoading } = useCustomers();
+  const createSiteMutation = useCreateSite();
+  const updateSiteMutation = useUpdateSite();
+  const deleteSiteMutation = useDeleteSite();
+
+  const loading = sitesLoading || customersLoading;
+  const error = sitesError ? 'サイト一覧の取得に失敗しました' : null;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all');
@@ -72,28 +81,6 @@ const Sites = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [sitesData, customersData] = await Promise.all([getSites(), getCustomers()]);
-      setSites(sitesData);
-      setCustomers(customersData);
-      setError(null);
-    } catch (err) {
-      setError('サイト一覧の取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useAutoRefresh(fetchData, 30000);
-
   // Auto-dismiss toast
   useEffect(() => {
     if (toast) {
@@ -112,7 +99,7 @@ const Sites = () => {
         if (status.status === 'completed') {
           setToast({ message: 'クロールが完了しました', type: 'success' });
           setCrawlingIds(prev => { const next = new Set(prev); next.delete(siteId); return next; });
-          fetchData();
+          queryClient.invalidateQueries({ queryKey: siteKeys.all });
         } else if (status.status === 'failed') {
           setToast({ message: 'クロールに失敗しました', type: 'error' });
           setCrawlingIds(prev => { const next = new Set(prev); next.delete(siteId); return next; });
@@ -191,11 +178,10 @@ const Sites = () => {
       try { new URL(formData.url); } catch { setFormError('有効なURLを入力してください'); setSubmitting(false); return; }
 
       if (siteModalMode === 'create') {
-        await createSite(formData);
+        await createSiteMutation.mutateAsync(formData);
       } else if (editingSite) {
-        await updateSite(editingSite.id, formData);
+        await updateSiteMutation.mutateAsync({ id: editingSite.id, data: formData });
       }
-      await fetchData();
       closeSiteModal();
     } catch (err: any) {
       setFormError(err.response?.data?.detail || 'エラーが発生しました');
@@ -207,8 +193,7 @@ const Sites = () => {
   const handleDeleteSite = async (site: Site) => {
     if (!confirm(`「${site.name}」を削除してもよろしいですか？`)) return;
     try {
-      await deleteSite(site.id);
-      await fetchData();
+      await deleteSiteMutation.mutateAsync(site.id);
     } catch (err: any) {
       alert(err.response?.data?.detail || '削除に失敗しました');
     }

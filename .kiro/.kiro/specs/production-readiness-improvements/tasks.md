@@ -155,99 +155,99 @@
     - **Property 7: タスクステータスポーリング間隔の条件分岐**
     - **検証対象: 要件 9.5**
 
-- [ ] 11. TanStack Query導入 — 既存コンポーネントの移行
-  - [ ] 11.1 ダッシュボード系ページ（`Dashboard.tsx` 等）の `setInterval` + `useState` を `useQuery` フックに置換する
+- [x] 11. TanStack Query導入 — 既存コンポーネントの移行
+  - [x] 11.1 ダッシュボード系ページ（`Dashboard.tsx` 等）の `setInterval` + `useState` を `useQuery` フックに置換する
     - _要件: 9.4_
-  - [ ] 11.2 サイト管理ページ（`Sites.tsx` 等）を `useSites` / `useCreateSite` 等のフックに移行する
+  - [x] 11.2 サイト管理ページ（`Sites.tsx` 等）を `useSites` / `useCreateSite` 等のフックに移行する
     - _要件: 9.1, 9.2, 9.3_
-  - [ ] 11.3 審査ワークフローページ（`ReviewDashboard.tsx`、`ReviewDetail.tsx`、`Reviews.tsx`）を `useReviews` 等のフックに移行する
+  - [x] 11.3 審査ワークフローページ（`ReviewDashboard.tsx`、`ReviewDetail.tsx`、`Reviews.tsx`）を `useReviews` 等のフックに移行する
     - _要件: 9.1, 9.2, 9.3_
-  - [ ] 11.4 アラート、カテゴリ、その他のページを対応するクエリフックに移行する
+  - [x] 11.4 アラート、カテゴリ、その他のページを対応するクエリフックに移行する
     - _要件: 9.1, 9.2, 9.3_
 
-- [ ] 12. チェックポイント — TanStack Query移行の検証
+- [x] 12. チェックポイント — TanStack Query移行の検証
   - 全テストが通ることを確認し、不明点があればユーザーに質問する。
 
-- [ ] 13. Tenacityリトライデコレータの実装
-  - [ ] 13.1 `src/core/retry.py` を新規作成し、`with_retry` デコレータを実装する
+- [x] 13. Tenacityリトライデコレータの実装
+  - [x] 13.1 `src/core/retry.py` を新規作成し、`with_retry` デコレータを実装する
     - 指数バックオフ（min=1s, max=10s, multiplier=2）+ ランダムジッター（max=1s）
     - `max_attempts=3`、`retry_on` で例外型指定、`retry_if` でカスタム条件
     - `before_sleep_log` で WARNING レベルログ出力
     - `reraise=True` で元の例外を再送出
     - _要件: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
-  - [ ]* 13.2 `with_retry` のプロパティベーステストを作成する
+  - [x]* 13.2 `with_retry` のプロパティベーステストを作成する
     - **Property 4: リトライデコレータのバックオフ時間境界**
     - **Property 5: リトライデコレータの最大試行回数遵守**
     - **Property 6: 非リトライ対象例外の即時伝搬**
     - **検証対象: 要件 10.1, 10.2, 10.3, 10.5**
-  - [ ] 13.3 `requirements.txt` に `tenacity` パッケージを追加する
+  - [x] 13.3 `requirements.txt` に `tenacity` パッケージを追加する
     - _要件: 10.1_
 
-- [ ] 14. Tenacityリトライの外部呼び出しへの適用
-  - [ ] 14.1 LLM API呼び出し（OpenAI/Anthropic）に `with_retry` を適用する
+- [x] 14. Tenacityリトライの外部呼び出しへの適用
+  - [x] 14.1 LLM API呼び出し（OpenAI/Anthropic）に `with_retry` を適用する
     - `retry_on=(HTTPStatusError,)` で HTTP 429 と 5xx をリトライ対象に設定
     - 4xx クライアントエラーはリトライしない
     - _要件: 11.1_
-  - [ ] 14.2 notification-worker の Slack webhook / メール送信に `with_retry` を適用する
+  - [x] 14.2 notification-worker の Slack webhook / メール送信に `with_retry` を適用する
     - `retry_on=(ConnectionError, SMTPException)` + HTTP 5xx
     - _要件: 11.2_
-  - [ ] 14.3 `httpx` 経由の外部HTTPリクエストに `with_retry` を適用する
+  - [x] 14.3 `httpx` 経由の外部HTTPリクエストに `with_retry` を適用する
     - `retry_on=(httpx.ConnectError, httpx.TimeoutException)` + HTTP 5xx
     - _要件: 11.3_
-  - [ ] 14.4 crawl-worker の Playwright スクリーンショットキャプチャに `with_retry` を適用する
+  - [x] 14.4 crawl-worker の Playwright スクリーンショットキャプチャに `with_retry` を適用する
     - `retry_on=(playwright.async_api.TimeoutError,)`
     - _要件: 11.4_
-  - [ ]* 14.5 リトライデコレータの実際のHTTPエラーハンドリングを検証する統合テストを作成する
+  - [x]* 14.5 リトライデコレータの実際のHTTPエラーハンドリングを検証する統合テストを作成する
     - 全リトライ試行失敗時に `RetryError` 経由で元の例外が発生することを検証
     - _要件: 11.5_
 
-- [ ] 15. チェックポイント — Phase 2 完了確認
+- [x] 15. チェックポイント — Phase 2 完了確認
   - 全テストが通ることを確認し、不明点があればユーザーに質問する。
 
 ### Phase 3: 品質保証（LOW優先度）
 
-- [ ] 16. E2Eテストプロジェクトセットアップ
-  - [ ] 16.1 `genai/e2e/` ディレクトリを作成し、`@playwright/test` をインストールする
+- [x] 16. E2Eテストプロジェクトセットアップ
+  - [x] 16.1 `genai/e2e/` ディレクトリを作成し、`@playwright/test` をインストールする
     - `package.json` に Playwright Test 依存関係を追加
     - _要件: 12.1_
-  - [ ] 16.2 `genai/e2e/playwright.config.ts` を作成する
+  - [x] 16.2 `genai/e2e/playwright.config.ts` を作成する
     - Chromium デフォルト、ビューポート 1280x720、`E2E_BASE_URL` 環境変数対応
     - `screenshot: 'only-on-failure'`、`trace: 'on-first-retry'`、`video: 'on-first-retry'`
     - `outputDir: 'test-results/'`
     - _要件: 12.1, 12.2, 12.3, 12.4_
-  - [ ] 16.3 `genai/e2e/global-setup.ts` を作成する
+  - [x] 16.3 `genai/e2e/global-setup.ts` を作成する
     - admin / reviewer / viewer の3ロールで認証し、セッション状態を `auth/*.json` に保存
     - _要件: 12.5, 14.5_
 
-- [ ] 17. E2E 重要ワークフローテスト
-  - [ ] 17.1 `genai/e2e/tests/login.spec.ts` を作成する
+- [x] 17. E2E 重要ワークフローテスト
+  - [x] 17.1 `genai/e2e/tests/login.spec.ts` を作成する
     - ログインページ遷移 → 認証情報入力 → 送信 → ダッシュボードリダイレクト検証
     - _要件: 13.1_
-  - [ ] 17.2 `genai/e2e/tests/site-management.spec.ts` を作成する
+  - [x] 17.2 `genai/e2e/tests/site-management.spec.ts` を作成する
     - 固有テストデータ生成（`e2e-site-${Date.now()}-...`）でサイト作成 → 一覧表示検証 → 更新 → 削除
     - `afterEach` でテストデータクリーンアップ
     - _要件: 13.2_
-  - [ ] 17.3 `genai/e2e/tests/alerts.spec.ts` を作成する
+  - [x] 17.3 `genai/e2e/tests/alerts.spec.ts` を作成する
     - アラートページ遷移 → 一覧読み込み検証 → 詳細の重要度・メッセージ表示検証
     - _要件: 13.3_
-  - [ ] 17.4 `genai/e2e/tests/review-workflow.spec.ts` を作成する
+  - [x] 17.4 `genai/e2e/tests/review-workflow.spec.ts` を作成する
     - `test.describe.configure({ mode: 'serial' })` で直列実行を保証（設計判断: 状態遷移テスト）
     - 審査ダッシュボード遷移 → 案件オープン → 判定送信 → 記録検証
     - _要件: 13.4_
-  - [ ] 17.5 `genai/e2e/tests/crawl-trigger.spec.ts` を作成する
+  - [x] 17.5 `genai/e2e/tests/crawl-trigger.spec.ts` を作成する
     - クロールトリガー → ステータスポーリング → 結果表示検証
     - _要件: 13.5_
 
-- [ ] 18. E2E RBAC検証テスト
-  - [ ] 18.1 `genai/e2e/tests/rbac.spec.ts` を作成する
+- [x] 18. E2E RBAC検証テスト
+  - [x] 18.1 `genai/e2e/tests/rbac.spec.ts` を作成する
     - viewer: ユーザー管理ページアクセス不可を検証
     - reviewer: 審査ダッシュボードアクセス可 + admin専用ページアクセス不可を検証
     - admin: 全ページアクセス可を検証
     - 各ロール用の個別認証状態ファイルを使用
     - _要件: 14.1, 14.2, 14.3, 14.4, 14.5_
 
-- [ ] 19. E2E CI/CD統合
-  - [ ] 19.1 `genai/e2e/.github/workflows/e2e.yml` を作成する
+- [x] 19. E2E CI/CD統合
+  - [x] 19.1 `genai/e2e/.github/workflows/e2e.yml` を作成する
     - `main` ブランチ対象のPRで Playwright テストを実行
     - `docker-compose up` でアプリケーションスタック起動
     - テスト失敗時にアーティファクト（スクリーンショット、トレース）をアップロード
@@ -255,7 +255,7 @@
     - テスト失敗時にチェックを失敗としてマーク
     - _要件: 15.1, 15.2, 15.3, 15.4, 15.5_
 
-- [ ] 20. 最終チェックポイント — 全フェーズ完了確認
+- [x] 20. 最終チェックポイント — 全フェーズ完了確認
   - 全テストが通ることを確認し、不明点があればユーザーに質問する。
 
 ## 備考

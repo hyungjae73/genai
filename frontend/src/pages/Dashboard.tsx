@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -11,8 +10,8 @@ import {
   Legend,
 } from 'chart.js';
 import type { ChartOptions } from 'chart.js';
-import { getStatistics, getMonitoringHistory, type Statistics, type MonitoringHistory } from '../services/api';
-import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useStatistics } from '../hooks/queries/useStatistics';
+import { useMonitoringHistory } from '../hooks/queries/useMonitoringHistory';
 import { Card } from '../components/ui/Card/Card';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
 import './Dashboard.css';
@@ -28,42 +27,17 @@ ChartJS.register(
 );
 
 const Dashboard = () => {
-  const [statistics, setStatistics] = useState<Statistics | null>(null);
-  const [history, setHistory] = useState<MonitoringHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: statistics, isLoading: statsLoading, error: statsError } = useStatistics();
+  const { data: history = [], isLoading: historyLoading } = useMonitoringHistory();
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [stats, hist] = await Promise.all([
-        getStatistics(),
-        getMonitoringHistory(),
-      ]);
-      setStatistics(stats);
-      setHistory(hist);
-      setError(null);
-    } catch (err) {
-      setError('データの取得に失敗しました');
-      console.error('Dashboard fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Auto-refresh every 30 seconds
-  useAutoRefresh(fetchData, 30000);
+  const loading = statsLoading || historyLoading;
 
   if (loading) {
     return <div className="loading">読み込み中...</div>;
   }
 
-  if (error) {
-    return <div className="error">{error}</div>;
+  if (statsError) {
+    return <div className="error">データの取得に失敗しました</div>;
   }
 
   if (!statistics) {

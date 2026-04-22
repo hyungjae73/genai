@@ -1,16 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Button } from '../components/ui/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  fetchReviewDetail,
-  assignReviewer,
-  decidePrimary,
-  decideSecondary,
-} from '../services/api';
-import type { ReviewDetail, ReviewDecisionType } from '../types/review';
+import { useReviewDetail, useAssignReviewer, useDecidePrimary, useDecideSecondary } from '../hooks/queries/useReviews';
+import type { ReviewDecisionType } from '../types/review';
 import './ReviewDetail.css';
 
 const DECISION_OPTIONS_PRIMARY: { value: ReviewDecisionType; label: string }[] = [
@@ -30,9 +25,12 @@ const ReviewDetailPage: React.FC = () => {
   const { user } = useAuth();
   const reviewId = Number(id);
 
-  const [detail, setDetail] = useState<ReviewDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: detail, isLoading: loading, error: queryError } = useReviewDetail(reviewId);
+  const error = queryError ? '審査案件の取得に失敗しました' : null;
+
+  const assignReviewerMutation = useAssignReviewer();
+  const decidePrimaryMutation = useDecidePrimary();
+  const decideSecondaryMutation = useDecideSecondary();
 
   // 判定フォーム
   const [decision, setDecision] = useState<ReviewDecisionType>('approved');
@@ -40,30 +38,12 @@ const ReviewDetailPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchReviewDetail(reviewId);
-      setDetail(data);
-    } catch {
-      setError('審査案件の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, [reviewId]);
-
   const handleAssign = async () => {
     if (!user) return;
     setSubmitting(true);
     setFormError(null);
     try {
-      await assignReviewer(reviewId, { reviewer_id: user.id });
-      await load();
+      await assignReviewerMutation.mutateAsync({ reviewId, body: { reviewer_id: user.id } });
     } catch {
       setFormError('担当者割り当てに失敗しました');
     } finally {
@@ -80,12 +60,11 @@ const ReviewDetailPage: React.FC = () => {
     setFormError(null);
     try {
       if (stage === 'primary') {
-        await decidePrimary(reviewId, { decision, comment });
+        await decidePrimaryMutation.mutateAsync({ reviewId, body: { decision, comment } });
       } else {
-        await decideSecondary(reviewId, { decision, comment });
+        await decideSecondaryMutation.mutateAsync({ reviewId, body: { decision, comment } });
       }
       setComment('');
-      await load();
     } catch {
       setFormError('判定の送信に失敗しました');
     } finally {

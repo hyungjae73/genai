@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import api from '../services/api';
+import { useState } from 'react';
+import { useUsers, useCreateUser, useUpdateUser, useDeactivateUser, useResetUserPassword } from '../hooks/queries/useUsers';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Button } from '../components/ui/Button/Button';
@@ -32,9 +32,13 @@ const roleBadgeVariant: Record<string, 'danger' | 'warning' | 'info'> = {
 };
 
 const Users = () => {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: users = [], isLoading: loading, error: queryError } = useUsers();
+  const error = queryError ? 'ユーザ一覧の取得に失敗しました' : null;
+
+  const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
+  const deactivateUserMutation = useDeactivateUser();
+  const resetPasswordMutation = useResetUserPassword();
 
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
@@ -54,30 +58,14 @@ const Users = () => {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get('/api/users');
-      setUsers(res.data);
-      setError(null);
-    } catch {
-      setError('ユーザ一覧の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchUsers(); }, []);
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
     setCreating(true);
     try {
-      await api.post('/api/users/', createForm);
+      await createUserMutation.mutateAsync(createForm);
       setShowCreate(false);
       setCreateForm({ username: '', email: '', password: '', role: 'viewer' });
-      await fetchUsers();
     } catch (err: any) {
       const detail = err.response?.data?.detail;
       setCreateError(Array.isArray(detail) ? detail.join('\n') : detail || 'エラーが発生しました');
@@ -92,12 +80,14 @@ const Users = () => {
     setEditError(null);
     setEditing(true);
     try {
-      await api.put(`/api/users/${editUser.id}`, {
-        email: editForm.email || undefined,
-        role: editForm.role || undefined,
+      await updateUserMutation.mutateAsync({
+        id: editUser.id,
+        data: {
+          email: editForm.email || undefined,
+          role: editForm.role || undefined,
+        },
       });
       setEditUser(null);
-      await fetchUsers();
     } catch (err: any) {
       setEditError(err.response?.data?.detail || 'エラーが発生しました');
     } finally {
@@ -108,8 +98,7 @@ const Users = () => {
   const handleDeactivate = async (user: User) => {
     if (!confirm(`「${user.username}」を無効化してもよろしいですか？`)) return;
     try {
-      await api.post(`/api/users/${user.id}/deactivate`);
-      await fetchUsers();
+      await deactivateUserMutation.mutateAsync(user.id);
     } catch (err: any) {
       alert(err.response?.data?.detail || '無効化に失敗しました');
     }
@@ -121,7 +110,7 @@ const Users = () => {
     setResetError(null);
     setResetting(true);
     try {
-      await api.post(`/api/users/${resetUser.id}/reset-password`, { new_password: resetPassword });
+      await resetPasswordMutation.mutateAsync({ id: resetUser.id, new_password: resetPassword });
       setResetUser(null);
       setResetPassword('');
       alert('パスワードをリセットしました。次回ログイン時にパスワード変更が求められます。');

@@ -1,11 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';
 import { Select } from '../components/ui/Select/Select';
 import { Button } from '../components/ui/Button/Button';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
-import { fetchReviews, type ReviewListParams } from '../services/api';
+import { useReviews } from '../hooks/queries/useReviews';
+import type { ReviewListParams } from '../services/api';
 import type { ReviewItem, ReviewStatus, ReviewPriority, ReviewType } from '../types/review';
 import './Reviews.css';
 
@@ -74,41 +75,24 @@ function statusLabel(status: ReviewStatus): string {
 
 const Reviews: React.FC = () => {
   const navigate = useNavigate();
-  const [items, setItems] = useState<ReviewItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [filterType, setFilterType] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params: ReviewListParams = {
-        limit: PAGE_SIZE,
-        offset,
-      };
-      if (filterStatus) params.status = filterStatus;
-      if (filterPriority) params.priority = filterPriority;
-      if (filterType) params.review_type = filterType;
+  const params: ReviewListParams = {
+    limit: PAGE_SIZE,
+    offset,
+    ...(filterStatus && { status: filterStatus }),
+    ...(filterPriority && { priority: filterPriority }),
+    ...(filterType && { review_type: filterType }),
+  };
 
-      const data = await fetchReviews(params);
-      setItems(data.items);
-      setTotal(data.total);
-    } catch {
-      setError('審査キューの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [offset, filterStatus, filterPriority, filterType]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data, isLoading: loading, error: queryError } = useReviews(params);
+  const items: ReviewItem[] = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const error = queryError ? '審査キューの取得に失敗しました' : null;
 
   const handleFilterChange = () => {
     setOffset(0);
