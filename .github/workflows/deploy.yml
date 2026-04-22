@@ -10,6 +10,8 @@ env:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     services:
       postgres:
         image: postgres:15-alpine
@@ -34,8 +36,9 @@ jobs:
         with:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('requirements.txt') }}
-      - run: pip install -r requirements.txt
-      - run: pytest --cov=src --cov-report=xml tests/
+          restore-keys: pip-
+      - run: pip install --upgrade -r requirements.txt
+      - run: pytest --cov=src --cov-report=xml tests/ -x --tb=short
         env:
           DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/test
           REDIS_URL: redis://localhost:6379/0
@@ -43,11 +46,13 @@ jobs:
 
   test-frontend:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - uses: actions/cache@v4
         with:
           path: frontend/node_modules
