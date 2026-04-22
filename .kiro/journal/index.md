@@ -117,3 +117,18 @@
 | 2026-04-14 | [2026-04-14-2100.md](sessions/2026-04-14-2100.md) | OCR スマート・リトライ実装: 信頼度 0% 時に5秒待機→スクリーンショット再取得→OCR 1回リトライ |
 | 2026-04-14 | [2026-04-14-2200.md](sessions/2026-04-14-2200.md) | OCR 0% 審査キュー自動投入: スマート・リトライ後も失敗した案件を manual-review-workflow に pending 投入 |
 | 2026-04-21 | [2026-04-21-1000.md](sessions/2026-04-21-1000.md) | 審査キュー HelpButton 追加: 全要件・表示例・操作権限・状態遷移ルールを詳細解説するヘルプモーダル実装 |
+| 2026-04-21 | [2026-04-21-1200.md](sessions/2026-04-21-1200.md) | Git マージ戦略最適化: 機能別8コミット＆push、postTaskExecution/agentStop リマインダーフック2つ作成 |
+| 2026-04-21 | [2026-04-21-1300.md](sessions/2026-04-21-1300.md) | Kiro設定チーム共有戦略: .kiro/ Git共有方式確認、MCP設定テンプレート化方針決定 |
+| 2026-04-21 | [2026-04-21-1400.md](sessions/2026-04-21-1400.md) | MCP設定テンプレート化: mcp.json.example 作成、.gitignore で秘匿情報除外 |
+| 2026-04-21 | [2026-04-21-1500.md](sessions/2026-04-21-1500.md) | 技術スタックレビュー: 6改善点を優先度整理（AsyncSession/OpenTelemetry が高優先） |
+| 2026-04-21 | [2026-04-21-1600.md](sessions/2026-04-21-1600.md) | production-readiness-improvements requirements.md 作成（15要件、日本語） |
+| 2026-04-21 | [2026-04-21-1700.md](sessions/2026-04-21-1700.md) | design.md 日本語作成: アーキテクチャ図・8正当性プロパティ・3フェーズ移行計画・リスク軽減策 |
+| 2026-04-21 | [2026-04-21-1800.md](sessions/2026-04-21-1800.md) | design.md フィードバック反映: 自動コミット廃止・Celeryキャッシュ無効化タイミング・E2E Flakiness対策 |
+| 2026-04-21 | [2026-04-21-1900.md](sessions/2026-04-21-1900.md) | tasks.md 作成完了: 3フェーズ20タスク、production-readiness-improvements spec 全3ファイル完成 |
+| 2026-04-22 | [2026-04-22-1000.md](sessions/2026-04-22-1000.md) | production-readiness タスク実行: Phase 1 全完了 + Phase 2 Task 8-10 完了（AsyncSession/OTel/Dockerfile.crawl/TanStack Query） |
+| 2026-04-22 | [2026-04-22-1200.md](sessions/2026-04-22-1200.md) | production-readiness 全20タスク完了: Phase 2 残り（TanStack Query移行/Tenacity/リトライ適用）+ Phase 3（E2Eテスト/RBAC/CI） |
+| 2026-04-22 | [2026-04-22-1400.md](sessions/2026-04-22-1400.md) | 開発憲章（Developer Charter）Steering 作成: 7規約（Lazy Loading禁止/自動コミット禁止/冪等性/ID渡し/状態分離/セレクタ/サイレントフェイラー） |
+| 2026-04-22 | [2026-04-22-1500.md](sessions/2026-04-22-1500.md) | 開発憲章監査: 26箇所の except:pass 検出、許容可能10箇所と要修正16箇所に分類 |
+| 2026-04-22 | [2026-04-22-1600.md](sessions/2026-04-22-1600.md) | 開発憲章準拠修正: 25箇所の except:pass を logger.warning/debug に置換 |
+| 2026-04-22 | [2026-04-22-1700.md](sessions/2026-04-22-1700.md) | ユーザー登録 [object Object] バグ修正: FastAPI 422 エラーの msg 抽出（3箇所） |
+| 2026-04-22 | [2026-04-22-1800.md](sessions/2026-04-22-1800.md) | エラーメッセージ日本語化: extractErrorMessage ユーティリティ作成、6ファイル統一、GitHub Actions Node.js 24 対応 |
