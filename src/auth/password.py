@@ -1,15 +1,14 @@
 """
 Password hashing and policy validation for Payment Compliance Monitor.
 
-Uses passlib with bcrypt for secure password hashing.
+Uses bcrypt library directly for secure password hashing.
+Note: passlib is NOT used due to Python 3.11+ crypt module deprecation
+and bcrypt compatibility issues.
 """
 
 import re
 
-from passlib.context import CryptContext
-
-# bcrypt context for password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
 
 def hash_password(plain_password: str) -> str:
@@ -21,7 +20,8 @@ def hash_password(plain_password: str) -> str:
     Returns:
         The bcrypt hash string.
     """
-    return pwd_context.hash(plain_password)
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(plain_password.encode("utf-8"), salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,7 +34,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if the password matches, False otherwise.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def validate_password_policy(password: str) -> list[str]:
