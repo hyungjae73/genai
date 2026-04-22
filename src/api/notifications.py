@@ -63,8 +63,8 @@ async def get_notification_config(
     customer_email = ""
     try:
         customer_email = site.customer.email
-    except (AttributeError, TypeError):
-        pass
+    except (AttributeError, TypeError) as e:
+        logger.debug("Customer email not available for site %s: %s", site_id, e)
 
     config = merge_notification_config(customer_email, site.plugin_config)
 
@@ -120,8 +120,8 @@ async def update_notification_config(
     customer_email = ""
     try:
         customer_email = site.customer.email
-    except (AttributeError, TypeError):
-        pass
+    except (AttributeError, TypeError) as e:
+        logger.debug("Customer email not available for site %s: %s", site_id, e)
 
     config = merge_notification_config(customer_email, site.plugin_config)
 

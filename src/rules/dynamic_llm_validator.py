@@ -361,8 +361,8 @@ class DynamicLLMValidatorPlugin(CrawlPlugin):
                         return {"prices": c.prices, "fees": c.fees,
                                 "payment_methods": c.payment_methods,
                                 "subscription_terms": c.subscription_terms}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load contract conditions for site %s: %s", site_id, e)
         return {}
 
     def _build_prompt(

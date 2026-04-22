@@ -352,8 +352,8 @@ class StructuredDataPlugin(CrawlPlugin):
                         name = item.get("name")
                         if name:
                             return str(name)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug("JSON-LD parse failed for product name: %s", e)
         return None
 
     def _get_product_name_microdata(self, soup: BeautifulSoup) -> Optional[str]:

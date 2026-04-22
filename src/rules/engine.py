@@ -158,6 +158,6 @@ class RuleEngine:
                     instance = attr()
                     register_rule(instance)
                     return instance
-        except (ImportError, ModuleNotFoundError):
-            pass
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.debug("Rule module import failed for %s: %s", module_path, e)
         return None

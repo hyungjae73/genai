@@ -148,8 +148,8 @@ class DBStoragePlugin(CrawlPlugin):
             if session is not None:
                 try:
                     session.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to close DB session: %s", e)
 
         return ctx
 

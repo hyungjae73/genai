@@ -2,8 +2,11 @@
 API endpoints for verification system.
 """
 
+import logging
 from datetime import datetime
 from typing import Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -146,8 +149,8 @@ async def _run_verification_task(site_id: int, db: AsyncSession):
             )
             db.add(error_record)
             await db.commit()
-        except Exception:
-            pass  # DB write failed too — nothing more we can do
+        except Exception as e:
+            logger.warning("Failed to write error verification result to DB: %s", e)
     finally:
         # Remove from running verifications
         if site_id in _running_verifications:

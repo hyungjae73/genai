@@ -224,8 +224,8 @@ class PageFetcherStage:
         # DOM stabilization wait
         try:
             await page.wait_for_timeout(DOM_STABILIZATION_WAIT_MS)
-        except Exception:
-            pass  # Non-critical
+        except Exception as e:
+            logger.debug("DOM stabilization wait failed (non-critical): %s", e)
 
         return ctx
 

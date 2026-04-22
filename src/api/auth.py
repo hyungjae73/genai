@@ -2,8 +2,11 @@
 Auth router for login, refresh, logout, and current-user endpoints.
 """
 
+import logging
 import os
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from redis.asyncio import Redis
@@ -190,8 +193,8 @@ async def logout(
         try:
             payload = decode_refresh_token(refresh_token)
             await revoke_refresh_token(payload["sub"], payload["jti"], redis)
-        except Exception:
-            pass  # token already invalid — still clear cookie
+        except Exception as e:
+            logger.debug("Refresh token already invalid during logout: %s", e)
 
     _clear_refresh_cookie(response)
     return None

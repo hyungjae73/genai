@@ -7,12 +7,15 @@ HTML extraction, OCR extraction, comparison, and validation.
 
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
 from src.analyzer import ContentAnalyzer, PaymentInfo
+
+logger = logging.getLogger(__name__)
 from src.validator import ValidationEngine, ValidationResult
 from src.ocr_engine import OCREngine
 from src.screenshot_capture import ScreenshotCapture
@@ -626,8 +629,8 @@ class VerificationService:
                                     "ocr_confidence": retry_ocr.average_confidence,
                                     "evidence_type": "general",
                                 }
-                except Exception:
-                    pass  # リトライ失敗は無視、元の結果を維持
+                except Exception as e:
+                    logger.warning("OCR smart retry failed: %s", e)  # 元の結果を維持
 
             return EvidencePathResult(
                 evidence_records=evidence_records,
@@ -754,8 +757,8 @@ class VerificationService:
                     site_id=site_id,
                     screenshot_type="verification",
                 )
-            except Exception:
-                pass  # Evidence path will handle missing screenshot
+            except Exception as e:
+                logger.warning("Screenshot capture failed, evidence path will handle: %s", e)
 
             # Run both paths in parallel
             structured_coro = self._run_structured_data_path(
@@ -857,8 +860,8 @@ class VerificationService:
                     review_svc = ReviewService(self.db_session)
                     review_svc.enqueue_from_alert(ocr_alert)
                     self.db_session.commit()
-                except Exception:
-                    pass  # 審査キュー投入失敗はクロール結果に影響させない
+                except Exception as e:
+                    logger.warning("Failed to enqueue OCR failure to review queue: %s", e)
 
             return VerificationData(
                 html_payment_info=asdict(html_payment_info),

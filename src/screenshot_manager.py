@@ -418,5 +418,5 @@ class ScreenshotManager:
             if dirpath.is_dir() and not any(dirpath.iterdir()):
                 try:
                     dirpath.rmdir()
-                except OSError:
-                    pass
+                except OSError as e:
+                    logger.debug("Failed to remove empty directory %s: %s", dirpath, e)

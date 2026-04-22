@@ -5,8 +5,11 @@ Provides JWT-based auth, role checking, and a migration-period
 dependency that accepts both JWT and X-API-Key.
 """
 
+import logging
 import os
 from typing import Generator, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -135,8 +138,8 @@ def get_current_user_or_api_key(
                 user = db.query(User).filter(User.id == user_id).first()
                 if user is not None and user.is_active:
                     return user
-        except Exception:
-            pass  # fall through to API key check
+        except Exception as e:
+            logger.debug("JWT auth failed, falling through to API key: %s", e)
 
     # 2. Fall back to X-API-Key
     api_key = request.headers.get("X-API-Key")

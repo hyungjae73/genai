@@ -214,14 +214,14 @@ class NotificationPlugin(CrawlPlugin):
         customer_email = ""
         try:
             customer_email = ctx.site.customer.email
-        except (AttributeError, TypeError):
-            pass
+        except (AttributeError, TypeError) as e:
+            logger.debug("Customer email not available: %s", e)
 
         site_config = None
         try:
             site_config = ctx.site.plugin_config
-        except AttributeError:
-            pass
+        except AttributeError as e:
+            logger.debug("Site plugin_config not available: %s", e)
 
         return merge_notification_config(customer_email, site_config)
 

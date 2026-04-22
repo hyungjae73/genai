@@ -173,8 +173,8 @@ class BrowserPool:
         # 安全にクローズを試みる
         try:
             await browser.close()
-        except Exception:
-            pass  # クラッシュ済みなので無視
+        except Exception as e:
+            logger.debug("Browser already crashed, close failed: %s", e)
 
         # 新しいインスタンスを生成
         new_browser = await self._create_browser()

@@ -84,8 +84,8 @@ class SessionManager:
         if lock:
             try:
                 await lock.release()
-            except Exception:
-                pass  # Lock already expired or not held
+            except Exception as e:
+                logger.debug("Lock already expired or not held: %s", e)
 
     async def verify_lock_held(self, site_id: int) -> bool:
         """Check if the login lock is still held before Cookie save.

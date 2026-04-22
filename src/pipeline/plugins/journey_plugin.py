@@ -194,8 +194,8 @@ class JourneyPlugin(CrawlPlugin):
                         text = text.strip()
                         if text:
                             snapshot["visible_texts"].append(text[:100])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to capture visible text element: %s", e)
         except Exception as exc:
             logger.debug("_capture_visible_snapshot error: %s", exc)
         return snapshot
@@ -228,8 +228,8 @@ class JourneyPlugin(CrawlPlugin):
             try:
                 await page.click(selector, timeout=5000)
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Click selector '%s' failed, trying fallback: %s", selector, e)
 
         # 🚨 CTO Override: heuristic fallback via get_by_role
         fallback = self._get_role_fallback(page, step)
@@ -307,8 +307,8 @@ class JourneyPlugin(CrawlPlugin):
                     if await el.is_visible():
                         found_modals.append(sel)
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Modal detection failed for selector %s: %s", sel, e)
 
         passed = len(found_modals) == 0
         return passed, {"found_modals": found_modals}
@@ -333,8 +333,8 @@ class JourneyPlugin(CrawlPlugin):
                             label_text = await el.evaluate(
                                 "el => el.labels && el.labels[0] ? el.labels[0].innerText : ''"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Failed to get label text: %s", e)
                         # Check if it looks like a subscription
                         subscription_keywords = [
                             "定期", "サブスク", "subscription", "recurring",
@@ -342,8 +342,8 @@ class JourneyPlugin(CrawlPlugin):
                         ]
                         if any(kw.lower() in label_text.lower() for kw in subscription_keywords):
                             preselected.append({"selector": sel, "label": label_text})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Preselected checkbox detection failed for %s: %s", sel, e)
 
         passed = len(preselected) == 0
         return passed, {"preselected_subscriptions": preselected}

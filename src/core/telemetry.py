@@ -117,9 +117,9 @@ def inject_trace_context(headers: dict) -> dict:
         from opentelemetry.propagate import inject
         inject(headers)
     except ImportError:
-        pass
-    except Exception:
-        pass
+        pass  # OTel not installed — acceptable
+    except Exception as e:
+        logger.debug("Trace context injection failed: %s", e)
     return headers
 
 
@@ -139,6 +139,7 @@ def extract_trace_context(headers: dict):
         from opentelemetry.propagate import extract
         return extract(headers)
     except ImportError:
-        return None
-    except Exception:
+        return None  # OTel not installed — acceptable
+    except Exception as e:
+        logger.debug("Trace context extraction failed: %s", e)
         return None

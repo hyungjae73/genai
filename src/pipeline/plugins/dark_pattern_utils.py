@@ -189,16 +189,16 @@ def extract_json_block(text: str) -> Optional[dict]:
     if block_match:
         try:
             return json.loads(block_match.group(1))
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug("JSON block parse failed, trying raw object: %s", e)
 
     # 2. Raw JSON object
     obj_match = _JSON_OBJECT.search(text)
     if obj_match:
         try:
             return json.loads(obj_match.group(0))
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug("Raw JSON object parse failed: %s", e)
 
     return None
 

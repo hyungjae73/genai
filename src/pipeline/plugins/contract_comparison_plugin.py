@@ -133,8 +133,8 @@ class ContractComparisonPlugin(CrawlPlugin):
                 return {
                     "prices": first.prices if hasattr(first, "prices") else {},
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to get contract conditions: %s", e)
 
         return None
 

@@ -5,9 +5,13 @@ Provides CRUD operations for extracted payment data
 associated with crawl results.
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 from typing import Optional
 
 from src.api.schemas import (
@@ -185,8 +189,8 @@ def _to_response(record: ExtractedPaymentInfo) -> ExtractedPaymentInfoResponse:
             cr = record.crawl_result
             if cr and cr.screenshot_path:
                 metadata["screenshot_path"] = cr.screenshot_path
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to get screenshot path for crawl result: %s", e)
 
     return ExtractedPaymentInfoResponse(
         id=record.id,

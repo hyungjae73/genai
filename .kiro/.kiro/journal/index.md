@@ -127,3 +127,6 @@
 | 2026-04-21 | [2026-04-21-1900.md](sessions/2026-04-21-1900.md) | tasks.md 作成完了: 3フェーズ20タスク、production-readiness-improvements spec 全3ファイル完成 |
 | 2026-04-22 | [2026-04-22-1000.md](sessions/2026-04-22-1000.md) | production-readiness タスク実行: Phase 1 全完了 + Phase 2 Task 8-10 完了（AsyncSession/OTel/Dockerfile.crawl/TanStack Query） |
 | 2026-04-22 | [2026-04-22-1200.md](sessions/2026-04-22-1200.md) | production-readiness 全20タスク完了: Phase 2 残り（TanStack Query移行/Tenacity/リトライ適用）+ Phase 3（E2Eテスト/RBAC/CI） |
+| 2026-04-22 | [2026-04-22-1400.md](sessions/2026-04-22-1400.md) | 開発憲章（Developer Charter）Steering 作成: 7規約（Lazy Loading禁止/自動コミット禁止/冪等性/ID渡し/状態分離/セレクタ/サイレントフェイラー） |
+| 2026-04-22 | [2026-04-22-1500.md](sessions/2026-04-22-1500.md) | 開発憲章監査: 26箇所の except:pass 検出、許容可能10箇所と要修正16箇所に分類 |
+| 2026-04-22 | [2026-04-22-1600.md](sessions/2026-04-22-1600.md) | 開発憲章準拠修正: 25箇所の except:pass を logger.warning/debug に置換 |
