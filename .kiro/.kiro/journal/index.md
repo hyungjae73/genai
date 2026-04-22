@@ -134,3 +134,4 @@
 | 2026-04-22 | [2026-04-22-1800.md](sessions/2026-04-22-1800.md) | エラーメッセージ日本語化: extractErrorMessage ユーティリティ作成、6ファイル統一、GitHub Actions Node.js 24 対応 |
 | 2026-04-22 | [2026-04-22-1900.md](sessions/2026-04-22-1900.md) | ESLint修正検証（0エラー/62警告）、残り14ファイルコミット、.kiro二重ネスト解消・同期 |
 | 2026-04-22 | [2026-04-22-2200.md](sessions/2026-04-22-2200.md) | @vitest/coverage-v8 依存追加（CI MISSING DEPENDENCY修正）、Gitマージ手順標準化 |
+| 2026-04-22 | [2026-04-22-2300.md](sessions/2026-04-22-2300.md) | CI キャッシュ戦略修正: cache-hit 時 npm ci スキップで stale node_modules 問題解消 |
