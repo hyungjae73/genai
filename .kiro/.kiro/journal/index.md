@@ -130,3 +130,5 @@
 | 2026-04-22 | [2026-04-22-1400.md](sessions/2026-04-22-1400.md) | 開発憲章（Developer Charter）Steering 作成: 7規約（Lazy Loading禁止/自動コミット禁止/冪等性/ID渡し/状態分離/セレクタ/サイレントフェイラー） |
 | 2026-04-22 | [2026-04-22-1500.md](sessions/2026-04-22-1500.md) | 開発憲章監査: 26箇所の except:pass 検出、許容可能10箇所と要修正16箇所に分類 |
 | 2026-04-22 | [2026-04-22-1600.md](sessions/2026-04-22-1600.md) | 開発憲章準拠修正: 25箇所の except:pass を logger.warning/debug に置換 |
+| 2026-04-22 | [2026-04-22-1700.md](sessions/2026-04-22-1700.md) | ユーザー登録 [object Object] バグ修正: FastAPI 422 エラーの msg 抽出（3箇所） |
+| 2026-04-22 | [2026-04-22-1800.md](sessions/2026-04-22-1800.md) | エラーメッセージ日本語化: extractErrorMessage ユーティリティ作成、6ファイル統一、GitHub Actions Node.js 24 対応 |

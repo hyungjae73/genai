@@ -12,6 +12,7 @@ import { Input } from '../components/ui/Input/Input';
 import { Select } from '../components/ui/Select/Select';
 import { Modal } from '../components/ui/Modal/Modal';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
+import { extractErrorMessage } from '../utils/errorMessage';
 import './Sites.css';
 
 type SiteRecord = Site & Record<string, unknown>;
@@ -184,7 +185,7 @@ const Sites = () => {
       }
       closeSiteModal();
     } catch (err: any) {
-      setFormError(err.response?.data?.detail || 'エラーが発生しました');
+      setFormError(extractErrorMessage(err, 'サイトの保存に失敗しました'));
     } finally {
       setSubmitting(false);
     }
@@ -195,7 +196,7 @@ const Sites = () => {
     try {
       await deleteSiteMutation.mutateAsync(site.id);
     } catch (err: any) {
-      alert(err.response?.data?.detail || '削除に失敗しました');
+      alert(extractErrorMessage(err, '削除に失敗しました'));
     }
   };
 

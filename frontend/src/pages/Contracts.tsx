@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button/Button';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
 import DynamicFieldInput from '../components/contract/DynamicFieldInput';
 import { validateDynamicField } from '../components/contract/validateDynamicField';
+import { extractErrorMessage } from '../utils/errorMessage';
 import './Contracts.css';
 
 const Contracts = () => {
@@ -189,7 +190,7 @@ const Contracts = () => {
       }
       closeModal();
     } catch (err: any) {
-      setFormError(err.response?.data?.detail || 'エラーが発生しました');
+      setFormError(extractErrorMessage(err, '契約条件の保存に失敗しました'));
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -208,7 +209,7 @@ const Contracts = () => {
         await fetchSiteContracts(selectedSite);
       }
     } catch (err: any) {
-      alert(err.response?.data?.detail || '削除に失敗しました');
+      alert(extractErrorMessage(err, '削除に失敗しました'));
       console.error(err);
     }
   };

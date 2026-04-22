@@ -5,6 +5,7 @@ import api from '../services/api';
 import { Card } from '../components/ui/Card/Card';
 import { Button } from '../components/ui/Button/Button';
 import { AxiosError } from 'axios';
+import { extractErrorMessage } from '../utils/errorMessage';
 import './Login.css';
 
 const ChangePassword: React.FC = () => {
@@ -50,10 +51,9 @@ const ChangePassword: React.FC = () => {
         if (err.response?.status === 401) {
           setError('現在のパスワードが正しくありません');
         } else if (err.response?.status === 422) {
-          const detail = err.response.data?.detail;
-          setError(Array.isArray(detail) ? detail.join('\n') : detail || 'パスワードポリシーを満たしていません');
+          setError(extractErrorMessage(err, 'パスワードポリシーを満たしていません'));
         } else {
-          setError('パスワード変更に失敗しました');
+          setError(extractErrorMessage(err, 'パスワード変更に失敗しました'));
         }
       } else {
         setError('パスワード変更に失敗しました');

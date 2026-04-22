@@ -7,6 +7,7 @@ import { Select } from '../components/ui/Select/Select';
 import { Input } from '../components/ui/Input/Input';
 import { Modal } from '../components/ui/Modal/Modal';
 import { HelpButton } from '../components/ui/HelpButton/HelpButton';
+import { extractErrorMessage } from '../utils/errorMessage';
 import './Customers.css';
 
 const Customers = () => {
@@ -137,7 +138,7 @@ const Customers = () => {
       await fetchCustomers();
       closeModal();
     } catch (err: any) {
-      setFormError(err.response?.data?.detail || 'エラーが発生しました');
+      setFormError(extractErrorMessage(err, '顧客の保存に失敗しました'));
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -153,7 +154,7 @@ const Customers = () => {
       await deleteCustomer(customer.id);
       await fetchCustomers();
     } catch (err: any) {
-      alert(err.response?.data?.detail || '削除に失敗しました');
+      alert(extractErrorMessage(err, '削除に失敗しました'));
       console.error(err);
     }
   };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { useUsers, useCreateUser, useUpdateUser, useDeactivateUser, useResetUserPassword } from '../hooks/queries/useUsers';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';
@@ -67,8 +68,7 @@ const Users = () => {
       setShowCreate(false);
       setCreateForm({ username: '', email: '', password: '', role: 'viewer' });
     } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setCreateError(Array.isArray(detail) ? detail.join('\n') : detail || 'エラーが発生しました');
+      setCreateError(extractErrorMessage(err, 'ユーザ作成に失敗しました'));
     } finally {
       setCreating(false);
     }
@@ -89,7 +89,7 @@ const Users = () => {
       });
       setEditUser(null);
     } catch (err: any) {
-      setEditError(err.response?.data?.detail || 'エラーが発生しました');
+      setEditError(extractErrorMessage(err, 'ユーザ更新に失敗しました'));
     } finally {
       setEditing(false);
     }
@@ -100,7 +100,7 @@ const Users = () => {
     try {
       await deactivateUserMutation.mutateAsync(user.id);
     } catch (err: any) {
-      alert(err.response?.data?.detail || '無効化に失敗しました');
+      alert(extractErrorMessage(err, '無効化に失敗しました'));
     }
   };
 
@@ -115,8 +115,7 @@ const Users = () => {
       setResetPassword('');
       alert('パスワードをリセットしました。次回ログイン時にパスワード変更が求められます。');
     } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setResetError(Array.isArray(detail) ? detail.join('\n') : detail || 'エラーが発生しました');
+      setResetError(extractErrorMessage(err, 'パスワードリセットに失敗しました'));
     } finally {
       setResetting(false);
     }
