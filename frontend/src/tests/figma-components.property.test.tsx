@@ -447,7 +447,7 @@ describe('Feature: figma-ux-improvement, Property 10: Table Mobile Layout', () =
 
           // Generate data rows based on columns
           const data = hasData
-            ? columns.map((col) =>
+            ? columns.map((_col) =>
                 Object.fromEntries(columns.map((c) => [c.key, `val-${c.key}`]))
               )
             : [];

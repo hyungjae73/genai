@@ -78,7 +78,7 @@ const SiteRow = ({ site, customerName, isExpanded, onToggle, onCrawlComplete }: 
           setIsCrawling(false);
           setCrawlError('クロールがタイムアウトしました');
         }
-      } catch (err) {
+      } catch (_err) {
         setIsCrawling(false);
         setCrawlError('クロールステータスの取得に失敗しました');
       }

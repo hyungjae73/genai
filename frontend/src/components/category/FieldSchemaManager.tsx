@@ -157,24 +157,8 @@ const FieldSchemaManager: React.FC<FieldSchemaManagerProps> = ({ categoryId }) =
     });
     
     // Parse validation rules for form
-    if (schema.validation_rules) {
-      const rules: typeof validationRules = {};
-      const vr = schema.validation_rules as Record<string, unknown>;
-      
-      if (vr.min !== undefined) rules.min = Number(vr.min);
-      if (vr.max !== undefined) rules.max = Number(vr.max);
-      if (vr.pattern) rules.pattern = String(vr.pattern);
-      if (vr.max_length) rules.max_length = Number(vr.max_length);
-      if (vr.currency_code) rules.currency_code = String(vr.currency_code);
-      if (vr.format) rules.format = String(vr.format);
-      if (vr.options && Array.isArray(vr.options)) {
-        rules.options = (vr.options as string[]).join(', ');
-      }
-      
-      setValidationRules(rules);
-    } else {
-      setValidationRules({});
-    }
+
+    setValidationRules({});
     
     setShowAddForm(true);
   };

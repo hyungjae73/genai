@@ -358,7 +358,7 @@ describe('Feature: hierarchical-ui-restructure, Property 17: ローディング�
         fc.constantFrom('contracts', 'screenshots', 'verification', 'alerts'),
         arbSiteId,
         arbCustomerName,
-        (tabName, siteId, customerName) => {
+        (tabName, _siteId, _customerName) => {
           // Loading state should be independent of other props
           const { container } = render(
             <MockTabContent loading={true} tabName={tabName} />

@@ -105,7 +105,7 @@ const allSemanticVarTokens = [...lightVarTokens, ...darkVarTokens];
 const arbSemanticVarToken = fc.constantFrom(...allSemanticVarTokens);
 
 // Generator that picks a random primitive token
-const arbPrimitiveToken = fc.constantFrom(...primitiveTokens);
+const _arbPrimitiveToken = fc.constantFrom(...primitiveTokens);
 
 // Generator that picks a random required category
 const arbRequiredCategory = fc.constantFrom(...REQUIRED_CATEGORIES);
@@ -800,7 +800,7 @@ describe('Feature: figma-ux-improvement, Property 2: CSS Cascade Propagation', (
       fc.assert(
         fc.property(
           fc.constantFrom(...tokensWithPrimitiveValues),
-          ([tokenName, _primitiveValue]) => {
+          ([tokenName, __primitiveValue]) => {
             // The token is referenced via var() in components, not as a raw value
             expect(allComponentVarRefs.has(tokenName)).toBe(true);
           }

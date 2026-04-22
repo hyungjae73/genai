@@ -8,7 +8,7 @@ import { AxiosError } from 'axios';
 import './Login.css';
 
 const Login: React.FC = () => {
-  const { login, user } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const passwordId = useId();

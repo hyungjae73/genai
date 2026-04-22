@@ -40,7 +40,7 @@ const CrawlResultModal = ({ jobId, onClose }: CrawlResultModalProps) => {
         } else {
           setError('クロール結果がまだ利用できません');
         }
-      } catch (err) {
+      } catch (_err) {
         setError('結果の取得に失敗しました');
       } finally {
         setLoading(false);

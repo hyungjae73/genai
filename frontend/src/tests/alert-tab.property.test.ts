@@ -357,7 +357,7 @@ describe('Feature: hierarchical-ui-restructure, Property 7: アラート表示�
           expect(html).toContain(expectedLabel);
 
           // Verify no other severity labels are present
-          const otherLabels = Object.values(severityMapping).filter(
+          const _otherLabels = Object.values(severityMapping).filter(
             (label) => label !== expectedLabel
           );
           

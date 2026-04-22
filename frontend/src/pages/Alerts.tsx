@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { Alert } from '../services/api';
 import { useAlerts } from '../hooks/queries/useAlerts';
 import { Card } from '../components/ui/Card/Card';
 import { Badge } from '../components/ui/Badge/Badge';

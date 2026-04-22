@@ -110,7 +110,7 @@ const Verification = () => {
               error: status.status === 'failed' ? status.result?.error_message || 'Verification failed' : null,
             }));
           }
-        } catch (err) {
+        } catch (_err) {
           clearInterval(pollInterval);
           setState(prev => ({
             ...prev,

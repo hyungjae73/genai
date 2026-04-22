@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Customer, Site, Category } from '../services/api';
+import type { Customer, Site } from '../services/api';
 import { useSites, siteKeys } from '../hooks/queries/useSites';
 import { useCustomers, customerKeys } from '../hooks/queries/useCustomers';
 import { useCategories } from '../hooks/queries/useCategories';
@@ -73,7 +73,7 @@ export function filterCustomers(
 
 const SiteManagement = () => {
   const queryClient = useQueryClient();
-  const { data: customersData = [], isLoading: customersLoading, error: customersError, refetch } = useCustomers();
+  const { data: customersData = [], isLoading: customersLoading, error: customersError } = useCustomers();
   const { data: sitesData = [], isLoading: sitesLoading } = useSites();
   const { data: categoriesData = [], isLoading: categoriesLoading } = useCategories();
 

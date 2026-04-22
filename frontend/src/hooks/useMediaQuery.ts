@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 export type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
-const MOBILE_MAX = 767;
+const _MOBILE_MAX = 767;
 const TABLET_MIN = 768;
 const TABLET_MAX = 1023;
 const DESKTOP_MIN = 1024;

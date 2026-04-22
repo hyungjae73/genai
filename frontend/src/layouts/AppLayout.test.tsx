@@ -17,7 +17,7 @@ vi.mock('../hooks/useMediaQuery', () => ({
 
 // Mock useAuth — default to admin so all nav items show
 const mockLogout = vi.fn();
-let mockAuthState = {
+const mockAuthState = {
   user: { id: 1, username: 'admin', role: 'admin' },
   accessToken: 'test-token',
   isAuthenticated: true,
