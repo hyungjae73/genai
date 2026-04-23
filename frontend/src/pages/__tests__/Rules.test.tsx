@@ -22,6 +22,6 @@ describe('Rules - Help Modal', () => {
     expect(screen.getByText('監視システムがどのような項目をチェックしているか確認したい')).toBeInTheDocument();
     expect(screen.getByText('カテゴリフィルター')).toBeInTheDocument();
     expect(screen.getByText('重要度と有効/無効')).toBeInTheDocument();
-    expect(screen.getByText('5つのカテゴリ')).toBeInTheDocument();
+    expect(screen.getByText('6つのカテゴリ')).toBeInTheDocument();
   });
 });

@@ -70,9 +70,9 @@ describe('AppLayout', () => {
       expect(screen.getByRole('navigation', { name: 'メインナビゲーション' })).toBeInTheDocument();
     });
 
-    it('renders all 9 navigation items', () => {
+    it('renders all 12 navigation items', () => {
       renderLayout();
-      expect(screen.getAllByRole('link')).toHaveLength(9);
+      expect(screen.getAllByRole('link')).toHaveLength(12);
     });
 
     it('does not show hamburger button', () => {
@@ -254,7 +254,7 @@ describe('AppLayout', () => {
     it('renders navigation items inside drawer', () => {
       renderLayout();
       fireEvent.click(screen.getByLabelText('メニューを開く'));
-      expect(screen.getAllByRole('link')).toHaveLength(9);
+      expect(screen.getAllByRole('link')).toHaveLength(12);
     });
   });
 });

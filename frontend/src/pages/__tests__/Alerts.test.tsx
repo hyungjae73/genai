@@ -6,6 +6,7 @@ import * as fc from 'fast-check';
 import Alerts from '../Alerts';
 import type { Alert } from '../../services/api';
 import * as api from '../../services/api';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 
 vi.mock('../../services/api', () => ({
   getAlerts: vi.fn(),
@@ -57,9 +58,11 @@ describe('Property 6: アラート種別フィルタリング', () => {
           vi.mocked(api.getAlerts).mockResolvedValue(uniqueAlerts);
 
           const { unmount } = render(
-            <BrowserRouter>
-              <Alerts />
-            </BrowserRouter>
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <Alerts />
+              </BrowserRouter>
+            </TestQueryClientProvider>
           );
 
           // Wait for loading to finish
@@ -100,9 +103,11 @@ describe('Property 6: アラート種別フィルタリング', () => {
           vi.mocked(api.getAlerts).mockResolvedValue(uniqueAlerts);
 
           const { unmount } = render(
-            <BrowserRouter>
-              <Alerts />
-            </BrowserRouter>
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <Alerts />
+              </BrowserRouter>
+            </TestQueryClientProvider>
           );
 
           await screen.findByText('アラート一覧');
@@ -138,9 +143,11 @@ describe('Property 6: アラート種別フィルタリング', () => {
           vi.mocked(api.getAlerts).mockResolvedValue(uniqueAlerts);
 
           const { unmount } = render(
-            <BrowserRouter>
-              <Alerts />
-            </BrowserRouter>
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <Alerts />
+              </BrowserRouter>
+            </TestQueryClientProvider>
           );
 
           await screen.findByText('アラート一覧');
@@ -179,9 +186,11 @@ describe('Property 7: TakeDownバナーの条件付き表示', () => {
           vi.mocked(api.getAlerts).mockResolvedValue(alerts);
 
           const { unmount } = render(
-            <BrowserRouter>
-              <Alerts />
-            </BrowserRouter>
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <Alerts />
+              </BrowserRouter>
+            </TestQueryClientProvider>
           );
 
           await screen.findByText('アラート一覧');
@@ -220,9 +229,11 @@ describe('Property 7: TakeDownバナーの条件付き表示', () => {
           vi.mocked(api.getAlerts).mockResolvedValue(alerts);
 
           const { unmount } = render(
-            <BrowserRouter>
-              <Alerts />
-            </BrowserRouter>
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <Alerts />
+              </BrowserRouter>
+            </TestQueryClientProvider>
           );
 
           await screen.findByText('アラート一覧');
@@ -258,10 +269,12 @@ describe('Property 7: TakeDownバナーの条件付き表示', () => {
     vi.mocked(api.getAlerts).mockResolvedValue([fakeSiteAlert]);
 
     render(
-      <BrowserRouter>
-        <Alerts />
-      </BrowserRouter>
-    );
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <Alerts />
+              </BrowserRouter>
+            </TestQueryClientProvider>
+          );
 
     await screen.findByText('アラート一覧');
 

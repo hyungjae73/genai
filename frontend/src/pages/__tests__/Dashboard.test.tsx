@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import Dashboard from '../Dashboard';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 import * as api from '../../services/api';
 
 // Mock chart.js to avoid canvas issues in jsdom
@@ -50,9 +51,11 @@ describe('Dashboard - Fake Site Stats Cards', () => {
 
   it('should display fake site alert count', async () => {
     render(
-      <BrowserRouter>
-        <Dashboard />
-      </BrowserRouter>
+      <TestQueryClientProvider>
+        <BrowserRouter>
+          <Dashboard />
+        </BrowserRouter>
+      </TestQueryClientProvider>
     );
 
     expect(await screen.findByText('偽サイト検知')).toBeInTheDocument();
@@ -61,9 +64,11 @@ describe('Dashboard - Fake Site Stats Cards', () => {
 
   it('should display unresolved fake site alert count', async () => {
     render(
-      <BrowserRouter>
-        <Dashboard />
-      </BrowserRouter>
+      <TestQueryClientProvider>
+        <BrowserRouter>
+          <Dashboard />
+        </BrowserRouter>
+      </TestQueryClientProvider>
     );
 
     expect(await screen.findByText('偽サイト検知')).toBeInTheDocument();
@@ -77,9 +82,11 @@ describe('Dashboard - Fake Site Stats Cards', () => {
     vi.mocked(api.getStatistics).mockResolvedValue(statsWithoutFake as unknown as api.Statistics);
 
     render(
-      <BrowserRouter>
-        <Dashboard />
-      </BrowserRouter>
+      <TestQueryClientProvider>
+        <BrowserRouter>
+          <Dashboard />
+        </BrowserRouter>
+      </TestQueryClientProvider>
     );
 
     expect(await screen.findByText('偽サイト検知')).toBeInTheDocument();
@@ -96,9 +103,11 @@ describe('Dashboard - Help Modal', () => {
 
   it('should display help button with correct aria-label', async () => {
     render(
-      <BrowserRouter>
-        <Dashboard />
-      </BrowserRouter>
+      <TestQueryClientProvider>
+        <BrowserRouter>
+          <Dashboard />
+        </BrowserRouter>
+      </TestQueryClientProvider>
     );
 
     const helpButton = await screen.findByRole('button', { name: 'ヘルプを表示' });
@@ -108,9 +117,11 @@ describe('Dashboard - Help Modal', () => {
 
   it('should open help modal with dashboard content when help button is clicked', async () => {
     render(
-      <BrowserRouter>
-        <Dashboard />
-      </BrowserRouter>
+      <TestQueryClientProvider>
+        <BrowserRouter>
+          <Dashboard />
+        </BrowserRouter>
+      </TestQueryClientProvider>
     );
 
     const helpButton = await screen.findByRole('button', { name: 'ヘルプを表示' });

@@ -7,6 +7,7 @@ import Contracts from '../Contracts';
 import Screenshots from '../Screenshots';
 import Verification from '../Verification';
 import * as api from '../../services/api';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 
 // Mock API calls
 vi.mock('../../services/api', () => ({
@@ -16,6 +17,8 @@ vi.mock('../../services/api', () => ({
   getSiteContracts: vi.fn(),
   getSiteScreenshots: vi.fn(),
   getVerificationResults: vi.fn(),
+  getCategories: vi.fn(),
+  getFieldSchemas: vi.fn(),
   createCustomer: vi.fn(),
   updateCustomer: vi.fn(),
   deleteCustomer: vi.fn(),
@@ -92,9 +95,11 @@ describe('Existing Pages - Backward Compatibility', () => {
       ]);
 
       render(
-        <BrowserRouter>
-          <Sites />
-        </BrowserRouter>
+        <TestQueryClientProvider>
+          <BrowserRouter>
+            <Sites />
+          </BrowserRouter>
+        </TestQueryClientProvider>
       );
 
       expect(await screen.findByText('監視対象サイト一覧')).toBeInTheDocument();
@@ -103,6 +108,7 @@ describe('Existing Pages - Backward Compatibility', () => {
 
   describe('Contracts Page', () => {
     it('should render without crashing', async () => {
+      vi.mocked(api.getCategories).mockResolvedValue([]);
       vi.mocked(api.getSites).mockResolvedValue([
         {
           id: 1,

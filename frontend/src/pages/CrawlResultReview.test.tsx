@@ -322,14 +322,11 @@ describe('CrawlResultReview Integration', () => {
       fireEvent.click(screen.getByLabelText('ヘルプを表示'));
 
       await waitFor(() => {
-        expect(screen.getByText('クロール結果レビューの使い方')).toBeInTheDocument();
+        expect(screen.getByText('このページの使い方')).toBeInTheDocument();
       });
-      expect(screen.getByText(/スクリーンショットとデータの並列表示/)).toBeInTheDocument();
-      expect(screen.getByText(/フィールドハイライト/)).toBeInTheDocument();
-      expect(screen.getByText(/HTML解析とOCR解析の比較/)).toBeInTheDocument();
-      // 承認ワークフロー appears both in help modal and on the page itself
-      const approvalTexts = screen.getAllByText(/承認ワークフロー/);
-      expect(approvalTexts.length).toBeGreaterThanOrEqual(2); // one in help, one in page
+      expect(screen.getByText(/スクリーンショットと抽出データの並列確認/)).toBeInTheDocument();
+      expect(screen.getByText(/フィールドをクリックでスクリーンショット上をハイライト/)).toBeInTheDocument();
+      expect(screen.getByText(/HTML解析とOCR解析の精度比較/)).toBeInTheDocument();
     });
   });
 

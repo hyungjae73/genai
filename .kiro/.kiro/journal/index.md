@@ -138,3 +138,5 @@
 | 2026-04-22 | [2026-04-22-2330.md](sessions/2026-04-22-2330.md) | CI coverage 根本修正: vite.config に provider:'v8' 明示、setup-node 組み込みキャッシュに移行 |
 | 2026-04-22 | [2026-04-22-2345.md](sessions/2026-04-22-2345.md) | passlib 完全排除→bcrypt 直接使用（Python 3.11 crypt 非推奨対応）、CI test-backend 修正 |
 | 2026-04-23 | [2026-04-23-0000.md](sessions/2026-04-23-0000.md) | npm audit fix で6件の脆弱性解消、CI coverage-v8 フォールバック追加 |
+| 2026-04-23 | [2026-04-23-0015.md](sessions/2026-04-23-0015.md) | 脆弱性自動検知フック2つ作成（npm-vulnerability-scan, pip-vulnerability-scan） |
+| 2026-04-23 | [2026-04-23-0145.md](sessions/2026-04-23-0145.md) | フロントエンドテスト全603件通過: 4テストファイル修正（モーダルテキスト/URL/モック不足） |

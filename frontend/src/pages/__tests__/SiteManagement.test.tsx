@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import SiteManagement from '../SiteManagement';
 import App from '../../App';
 import * as api from '../../services/api';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 
 // Mock API calls used by SiteManagement
 vi.mock('../../services/api', () => ({
@@ -66,9 +67,11 @@ describe('SiteManagement - ページタイトル', () => {
 
   it('should display "サイト管理" as the page title in <h1>', async () => {
     render(
-      <MemoryRouter>
-        <SiteManagement />
-      </MemoryRouter>
+      <TestQueryClientProvider>
+        <MemoryRouter>
+          <SiteManagement />
+        </MemoryRouter>
+      </TestQueryClientProvider>
     );
 
     const heading = await screen.findByRole('heading', { level: 1 });
@@ -104,7 +107,7 @@ describe('SiteManagement - ルーティング', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('サイト管理')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /サイト管理/ })).toBeInTheDocument();
   });
 
   it('redirects /screenshots to /site-management', async () => {
@@ -112,7 +115,7 @@ describe('SiteManagement - ルーティング', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('サイト管理')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /サイト管理/ })).toBeInTheDocument();
   });
 
   it('redirects /verification to /site-management', async () => {
@@ -120,7 +123,7 @@ describe('SiteManagement - ルーティング', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('サイト管理')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /サイト管理/ })).toBeInTheDocument();
   });
 });
 
@@ -139,9 +142,11 @@ describe('SiteManagement - ヘルプモーダル', () => {
 
   it('should display a help button with aria-label "ヘルプを表示"', async () => {
     render(
-      <MemoryRouter>
-        <SiteManagement />
-      </MemoryRouter>
+      <TestQueryClientProvider>
+        <MemoryRouter>
+          <SiteManagement />
+        </MemoryRouter>
+      </TestQueryClientProvider>
     );
 
     await screen.findByRole('heading', { level: 1 });
@@ -154,9 +159,11 @@ describe('SiteManagement - ヘルプモーダル', () => {
     const user = userEvent.setup();
 
     render(
-      <MemoryRouter>
-        <SiteManagement />
-      </MemoryRouter>
+      <TestQueryClientProvider>
+        <MemoryRouter>
+          <SiteManagement />
+        </MemoryRouter>
+      </TestQueryClientProvider>
     );
 
     await screen.findByRole('heading', { level: 1 });
@@ -164,9 +171,8 @@ describe('SiteManagement - ヘルプモーダル', () => {
     await user.click(helpButton);
 
     expect(screen.getByText('サイト管理の使い方')).toBeInTheDocument();
-    expect(screen.getByText('顧客ごとのサイト構造を把握し、各サイトの詳細操作を行いたい')).toBeInTheDocument();
-    expect(screen.getByText('階層構造')).toBeInTheDocument();
-    expect(screen.getByText('ベースラインスクリーンショット')).toBeInTheDocument();
-    expect(screen.getByText('検証・比較', { selector: 'h3' })).toBeInTheDocument();
+    expect(screen.getByText(/顧客→サイトの階層構造でサイトを管理/)).toBeInTheDocument();
+    expect(screen.getByText('できること')).toBeInTheDocument();
+    expect(screen.getByText('詳細タブ')).toBeInTheDocument();
   });
 });

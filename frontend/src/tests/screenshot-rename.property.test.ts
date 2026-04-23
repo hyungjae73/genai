@@ -76,6 +76,8 @@ import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 import { Sidebar } from '../components/ui/Sidebar/Sidebar';
 import type { NavItem } from '../components/ui/Sidebar/Sidebar';
+import { createTestQueryClient } from '../test/testQueryClient';
+import { QueryClientProvider } from '@tanstack/react-query';
 
 /**
  * Arbitrary: generates a list of unique group definitions (1–5 groups).
@@ -178,6 +180,9 @@ vi.mock('../services/api', () => ({
   createCustomer: vi.fn(),
   updateCustomer: vi.fn(),
   deleteCustomer: vi.fn(),
+  createSite: vi.fn(),
+  updateSite: vi.fn(),
+  deleteSite: vi.fn(),
   createContract: vi.fn(),
   deleteContract: vi.fn(),
   triggerCrawl: vi.fn(),
@@ -191,6 +196,7 @@ vi.mock('../services/api', () => ({
   deleteScreenshot: vi.fn(),
   extractData: vi.fn(),
   updateExtractedData: vi.fn(),
+  getFieldSchemas: vi.fn(),
 }));
 
 vi.mock('react-chartjs-2', () => ({
@@ -540,6 +546,9 @@ const PAGE_CONFIGS: PageConfig[] = [
     setupMocks: () => {
       vi.mocked(api.getSites).mockResolvedValue([]);
       vi.mocked(api.getCustomers).mockResolvedValue([]);
+      vi.mocked(api.createSite).mockResolvedValue({} as any);
+      vi.mocked(api.updateSite).mockResolvedValue({} as any);
+      vi.mocked(api.deleteSite).mockResolvedValue(undefined as any);
     },
   },
   {
@@ -614,6 +623,7 @@ const PAGE_CONFIGS: PageConfig[] = [
       vi.mocked(api.getSites).mockResolvedValue([]);
       vi.mocked(api.getContracts).mockResolvedValue([]);
       vi.mocked(api.getSiteContracts).mockResolvedValue([]);
+      vi.mocked(api.getCategories).mockResolvedValue([]);
     },
   },
   {
@@ -673,7 +683,10 @@ describe('Property 5: Help button presence, accessibility, and modal behavior', 
                 React.createElement(PageComponent),
               );
 
-          const { container } = render(wrapper);
+          const testQueryClient = createTestQueryClient();
+          const { container } = render(
+            React.createElement(QueryClientProvider, { client: testQueryClient }, wrapper),
+          );
 
           // Wait for the page to finish loading (async pages show loading state first)
           await waitFor(() => {

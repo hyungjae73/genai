@@ -6,6 +6,7 @@ import FakeSites from '../FakeSites';
 import App from '../../App';
 import type { Alert } from '../../services/api';
 import * as api from '../../services/api';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 
 vi.mock('../../services/api', () => ({
   getAlerts: vi.fn(),
@@ -90,9 +91,11 @@ describe('Property 8: 偽サイトアラート表示の完全性', () => {
           vi.mocked(api.getAlerts).mockResolvedValue(alerts);
 
           const { unmount } = render(
-            <BrowserRouter>
-              <FakeSites />
-            </BrowserRouter>
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <FakeSites />
+              </BrowserRouter>
+            </TestQueryClientProvider>
           );
 
           await screen.findByText('偽サイト検知');
@@ -148,10 +151,12 @@ describe('Property 8: 偽サイトアラート表示の完全性', () => {
     vi.mocked(api.getAlerts).mockReturnValue(new Promise(() => {}));
 
     render(
-      <BrowserRouter>
-        <FakeSites />
-      </BrowserRouter>
-    );
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <FakeSites />
+              </BrowserRouter>
+            </TestQueryClientProvider>
+          );
 
     expect(screen.getByText('読み込み中...')).toBeInTheDocument();
   });
@@ -160,10 +165,12 @@ describe('Property 8: 偽サイトアラート表示の完全性', () => {
     vi.mocked(api.getAlerts).mockRejectedValue(new Error('Network error'));
 
     render(
-      <BrowserRouter>
-        <FakeSites />
-      </BrowserRouter>
-    );
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <FakeSites />
+              </BrowserRouter>
+            </TestQueryClientProvider>
+          );
 
     await screen.findByText('偽サイトアラートの取得に失敗しました');
   });
@@ -172,10 +179,12 @@ describe('Property 8: 偽サイトアラート表示の完全性', () => {
     vi.mocked(api.getAlerts).mockResolvedValue([]);
 
     render(
-      <BrowserRouter>
-        <FakeSites />
-      </BrowserRouter>
-    );
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <FakeSites />
+              </BrowserRouter>
+            </TestQueryClientProvider>
+          );
 
     await screen.findByText('偽サイトアラートはありません');
   });
@@ -199,10 +208,12 @@ describe('Property 8: 偽サイトアラート表示の完全性', () => {
     vi.mocked(api.getAlerts).mockResolvedValue(mixedAlerts);
 
     render(
-      <BrowserRouter>
-        <FakeSites />
-      </BrowserRouter>
-    );
+            <TestQueryClientProvider>
+              <BrowserRouter>
+                <FakeSites />
+              </BrowserRouter>
+            </TestQueryClientProvider>
+          );
 
     await screen.findByText('偽サイト検知');
 
@@ -245,7 +256,7 @@ describe('ナビゲーションとルーティング', () => {
 
     render(<App />);
 
-    await screen.findByText('偽サイト検知');
-    expect(screen.getByText('偽サイト検知', { selector: 'h1' })).toBeInTheDocument();
+    const heading = await screen.findByRole('heading', { name: /偽サイト検知/ });
+    expect(heading).toBeInTheDocument();
   });
 });

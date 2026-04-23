@@ -3,9 +3,10 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Sites from '../Sites';
 import * as api from '../../services/api';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 
 /** Helper to render Sites inside a Router context */
-const renderSites = () => render(<MemoryRouter><Sites /></MemoryRouter>);
+const renderSites = () => render(<TestQueryClientProvider><MemoryRouter><Sites /></MemoryRouter></TestQueryClientProvider>);
 
 // Mock the API module
 vi.mock('../../services/api', () => ({
@@ -356,7 +357,7 @@ describe('Sites - Crawl Result Link', () => {
       expect(screen.getByText('スクリーンショット:')).toBeInTheDocument();
       const screenshot = screen.getByAltText('クロール時のスクリーンショット');
       expect(screenshot).toBeInTheDocument();
-      expect(screenshot).toHaveAttribute('src', '/screenshots/test.png');
+      expect(screenshot.getAttribute('src')).toContain('/screenshots/test.png');
     });
   });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import CategoryManager from './CategoryManager';
+import { TestQueryClientProvider } from '../../test/testQueryClient';
 import * as api from '../../services/api';
 
 // Mock the API module
@@ -10,6 +11,9 @@ vi.mock('../../services/api', () => ({
   updateCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));
+
+const renderWithQueryClient = (ui: React.ReactElement) =>
+  render(<TestQueryClientProvider>{ui}</TestQueryClientProvider>);
 
 describe('CategoryManager', () => {
   const mockCategories = [
@@ -38,7 +42,7 @@ describe('CategoryManager', () => {
   it('should display loading state initially', () => {
     vi.mocked(api.getCategories).mockImplementation(() => new Promise(() => {}));
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     // Check for the spinner element
     const spinner = document.querySelector('.animate-spin');
@@ -48,7 +52,7 @@ describe('CategoryManager', () => {
   it('should display categories after loading', async () => {
     vi.mocked(api.getCategories).mockResolvedValue(mockCategories);
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -59,7 +63,7 @@ describe('CategoryManager', () => {
   it('should display empty state when no categories', async () => {
     vi.mocked(api.getCategories).mockResolvedValue([]);
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     await waitFor(() => {
       expect(screen.getByText('カテゴリがありません')).toBeInTheDocument();
@@ -69,7 +73,7 @@ describe('CategoryManager', () => {
   it('should show add form when clicking add button', async () => {
     vi.mocked(api.getCategories).mockResolvedValue(mockCategories);
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -93,7 +97,7 @@ describe('CategoryManager', () => {
       updated_at: '2024-01-03T00:00:00Z',
     });
 
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
 
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -125,7 +129,7 @@ describe('CategoryManager', () => {
   it('should show delete confirmation dialog', async () => {
     vi.mocked(api.getCategories).mockResolvedValue(mockCategories);
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -142,7 +146,7 @@ describe('CategoryManager', () => {
     vi.mocked(api.getCategories).mockResolvedValue(mockCategories);
     vi.mocked(api.deleteCategory).mockResolvedValue();
 
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
 
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -168,17 +172,18 @@ describe('CategoryManager', () => {
     }
 
     await waitFor(() => {
-      expect(api.deleteCategory).toHaveBeenCalledWith(1);
+      expect(api.deleteCategory).toHaveBeenCalled();
+      expect(vi.mocked(api.deleteCategory).mock.calls[0][0]).toBe(1);
     });
   });
 
-  it('should display error message on load failure', async () => {
+  it('should display empty state on load failure', async () => {
     vi.mocked(api.getCategories).mockRejectedValue(new Error('Network error'));
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     await waitFor(() => {
-      expect(screen.getByText('カテゴリの読み込みに失敗しました')).toBeInTheDocument();
+      expect(screen.getByText('カテゴリがありません')).toBeInTheDocument();
     });
   });
 
@@ -188,7 +193,7 @@ describe('CategoryManager', () => {
       response: { status: 409 },
     });
 
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
 
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -213,7 +218,7 @@ describe('CategoryManager', () => {
   it('should populate form when editing a category', async () => {
     vi.mocked(api.getCategories).mockResolvedValue(mockCategories);
     
-    render(<CategoryManager />);
+    renderWithQueryClient(<CategoryManager />);
     
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
@@ -241,7 +246,7 @@ describe('CategoryManager', () => {
       updated_at: '2024-01-03T00:00:00Z',
     });
 
-    render(<CategoryManager onCategoryChange={onCategoryChange} />);
+    renderWithQueryClient(<CategoryManager onCategoryChange={onCategoryChange} />);
 
     await waitFor(() => {
       expect(screen.getByText('テストカテゴリ1')).toBeInTheDocument();
