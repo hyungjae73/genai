@@ -68,11 +68,15 @@ class AlertPlugin(CrawlPlugin):
                         session.add(alert)
                     session.commit()
                     # 審査キューへ自動投入 (要件 2.1, 2.2)
+                    # ReviewService.enqueue_from_alert is async and requires
+                    # an AsyncSession. Skip if session is sync (e.g. in tests).
                     try:
-                        from src.review.service import ReviewService
-                        svc = ReviewService(session)
-                        for alert in alerts_generated:
-                            await svc.enqueue_from_alert(alert)
+                        from sqlalchemy.ext.asyncio import AsyncSession
+                        if isinstance(session, AsyncSession):
+                            from src.review.service import ReviewService
+                            svc = ReviewService(session)
+                            for alert in alerts_generated:
+                                await svc.enqueue_from_alert(alert)
                     except Exception as review_exc:
                         logger.warning("審査キュー投入に失敗しました: %s", review_exc)
                     session.close()
